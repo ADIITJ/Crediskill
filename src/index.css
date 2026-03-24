@@ -1,0 +1,87 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --brutal-black: #000000;
+  --neon-green: #00FF00;
+  --soft-white: #F8F9FA;
+  --accent-yellow: #FFD700;
+  --accent-pink: #FF69B4;
+}
+
+body {
+  background-color: var(--soft-white);
+  color: var(--brutal-black);
+  @apply antialiased;
+}
+
+.brutal-border {
+  border: 3px solid var(--brutal-black);
+}
+
+.brutal-shadow {
+  box-shadow: 6px 6px 0px 0px var(--brutal-black);
+}
+
+.brutal-shadow-sm {
+  box-shadow: 4px 4px 0px 0px var(--brutal-black);
+}
+
+.brutal-button {
+  border: 3px solid var(--brutal-black);
+  box-shadow: 6px 6px 0px 0px var(--brutal-black);
+  @apply px-6 py-3 font-extrabold uppercase tracking-widest transition-all active:translate-x-1 active:translate-y-1 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.brutal-card {
+  border: 3px solid var(--brutal-black);
+  box-shadow: 8px 8px 0px 0px var(--brutal-black);
+  @apply bg-white p-8 transition-all;
+}
+
+.brutal-input {
+  border: 3px solid var(--brutal-black);
+  @apply px-4 py-3 bg-white focus:bg-white outline-none font-bold;
+}
+
+.neon-bg {
+  background-color: var(--neon-green);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--soft-white);
+  border-left: 3px solid var(--brutal-black);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--brutal-black);
+  border: 2px solid var(--soft-white);
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.marquee-container {
+  overflow: hidden;
+  white-space: nowrap;
+  border-top: 3px solid var(--brutal-black);
+  border-bottom: 3px solid var(--brutal-black);
+  @apply py-2 bg-black text-white font-black uppercase tracking-tighter;
+}
+
+.marquee-content {
+  display: inline-block;
+  animation: marquee 20s linear infinite;
+}

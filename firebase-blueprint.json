@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "recruiter", "admin"] },
+        "badges": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Skill assessment task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "skill": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] },
+        "submissionType": { "type": "string", "enum": ["code", "image", "video"] },
+        "requirements": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "title", "skill", "difficulty", "submissionType"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "User's task submission",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "taskId": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string", "enum": ["code", "image", "video"] },
+        "score": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "verified", "failed"] },
+        "feedback": { "type": "array", "items": { "type": "string" } },
+        "antiCheatStats": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "taskId", "content", "type", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Assessment tasks"
+    },
+    "/submissions/{submissionId}": {
+      "schema": "Submission",
+      "description": "User submissions"
+    }
+  }
+}

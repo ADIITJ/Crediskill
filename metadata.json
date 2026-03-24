@@ -1,0 +1,8 @@
+{
+  "name": "Crediskill",
+  "description": "Next-generation skill verification platform using multimodal AI to bridge the trust gap between job seekers and recruiters.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
