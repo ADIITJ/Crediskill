@@ -1,71 +1,71 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap');
 
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Fraunces", serif;
 }
 
 :root {
-  --brutal-black: #000000;
-  --neon-green: #00FF00;
-  --soft-white: #F8F9FA;
-  --accent-yellow: #FFD700;
-  --accent-pink: #FF69B4;
+  --ink: #0F172A; /* Slate 900 */
+  --ink-muted: #64748B; /* Slate 500 */
+  --accent: #6366F1; /* Indigo 500 */
+  --accent-glow: rgba(99, 102, 241, 0.15);
+  --paper: #F8FAFC; /* Slate 50 */
+  --card: #FFFFFF;
+  --line: #E2E8F0; /* Slate 200 */
+  --shadow: rgba(15, 23, 42, 0.08);
 }
 
 body {
-  background-color: var(--soft-white);
-  color: var(--brutal-black);
-  @apply antialiased;
+  background-color: var(--paper);
+  color: var(--ink);
+  @apply antialiased selection:bg-indigo-100 selection:text-indigo-900;
 }
 
-.brutal-border {
-  border: 3px solid var(--brutal-black);
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-.brutal-shadow {
-  box-shadow: 6px 6px 0px 0px var(--brutal-black);
+.glass-dark {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.brutal-shadow-sm {
-  box-shadow: 4px 4px 0px 0px var(--brutal-black);
+.modern-card {
+  @apply bg-white p-8 transition-all duration-500 rounded-[2rem] border border-slate-100 hover:border-indigo-200 hover:shadow-[0_20px_50px_-12px_rgba(99,102,241,0.12)];
 }
 
-.brutal-button {
-  border: 3px solid var(--brutal-black);
-  box-shadow: 6px 6px 0px 0px var(--brutal-black);
-  @apply px-6 py-3 font-extrabold uppercase tracking-widest transition-all active:translate-x-1 active:translate-y-1 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed;
+.modern-input {
+  @apply px-6 py-4 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none font-medium rounded-2xl transition-all duration-300;
 }
 
-.brutal-card {
-  border: 3px solid var(--brutal-black);
-  box-shadow: 8px 8px 0px 0px var(--brutal-black);
-  @apply bg-white p-8 transition-all;
-}
-
-.brutal-input {
-  border: 3px solid var(--brutal-black);
-  @apply px-4 py-3 bg-white focus:bg-white outline-none font-bold;
-}
-
-.neon-bg {
-  background-color: var(--neon-green);
+.glow-indigo {
+  box-shadow: 0 0 20px var(--accent-glow);
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 12px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--soft-white);
-  border-left: 3px solid var(--brutal-black);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--brutal-black);
-  border: 2px solid var(--soft-white);
+  background: var(--line);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-muted);
 }
 
 @keyframes marquee {
@@ -76,12 +76,14 @@ body {
 .marquee-container {
   overflow: hidden;
   white-space: nowrap;
-  border-top: 3px solid var(--brutal-black);
-  border-bottom: 3px solid var(--brutal-black);
-  @apply py-2 bg-black text-white font-black uppercase tracking-tighter;
+  @apply py-3 bg-slate-900 text-white font-bold uppercase tracking-[0.3em] text-[10px];
 }
 
 .marquee-content {
   display: inline-block;
-  animation: marquee 20s linear infinite;
+  animation: marquee 30s linear infinite;
+}
+
+.text-balance {
+  text-wrap: balance;
 }
