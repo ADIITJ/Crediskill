@@ -4,48 +4,8 @@ service cloud.firestore {
     // ===============================================================
     // Helper Functions
     // ===============================================================
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         (request.auth.token.email == "atharva.a.date@gmail.com" && request.auth.token.email_verified == true));
-    }
-
-    function isRecruiter() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'recruiter';
-    }
-
-    // ===============================================================
-    // User Profiles
-    // ===============================================================
-    match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin() || isRecruiter());
-      allow create: if isAuthenticated() && isOwner(userId) && request.resource.data.role in ['student', 'recruiter'];
-      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
-    }
-
-    // ===============================================================
-    // Tasks
-    // ===============================================================
-    match /tasks/{taskId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
-    }
-
-    // ===============================================================
-    // Submissions
-    // ===============================================================
-    match /submissions/{submissionId} {
-      allow read: if isAuthenticated() && (request.auth.uid == resource.data.userId || isAdmin() || isRecruiter());
-      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
-      allow update: if isAuthenticated() && (request.auth.uid == resource.data.userId || isAdmin());
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }

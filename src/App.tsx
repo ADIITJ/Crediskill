@@ -37,13 +37,6 @@ import {
   db 
 } from './firebase';
 import { 
-  signInWithPopup, 
-  signInAnonymously,
-  signOut, 
-  onAuthStateChanged, 
-  GoogleAuthProvider 
-} from 'firebase/auth';
-import { 
   BrowserRouter as Router, 
   Routes, 
   Route, 
@@ -67,7 +60,6 @@ import {
   limit,
   getDocs
 } from 'firebase/firestore';
-import { User as FirebaseUser } from 'firebase/auth';
 import Markdown from 'react-markdown';
 import { generateTask, generateAntiCheat, evaluateSubmission } from './services/gemini';
 
@@ -204,17 +196,12 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
+      userId: 'demo-user',
+      email: 'demo@example.com',
+      emailVerified: true,
+      isAnonymous: true,
+      tenantId: null,
+      providerInfo: []
     },
     operationType,
     path
@@ -258,50 +245,6 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     }
     return this.props.children;
   }
-}
-
-function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode, requiredRole?: Role }) {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        try {
-          const docRef = doc(db, 'users', u.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setProfile(docSnap.data() as UserProfile);
-          }
-        } catch (error) {
-          console.error("Error fetching profile:", error);
-        }
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="h-12 w-12 text-indigo-600 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/" replace />;
-  }
-
-  if (requiredRole && profile && profile.role !== requiredRole) {
-    return <Navigate to={profile.role === 'recruiter' ? '/recruiter' : '/student'} replace />;
-  }
-
-  return <>{children}</>;
 }
 
 function MediaUpload({ type, onUpload }: { type: 'image' | 'video', onUpload: (base64: string, mimeType: string) => void }) {
@@ -419,89 +362,45 @@ const MOCK_SUBMISSIONS: Submission[] = [
 // --- Main Application ---
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    const saved = localStorage.getItem('crediskill-profile');
+    return saved ? JSON.parse(saved) : null;
+  });
 
-  useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        try {
-          const docRef = doc(db, 'users', u.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setProfile(docSnap.data() as UserProfile);
-          }
-        } catch (error) {
-          handleFirestoreError(error, OperationType.GET, `users/${u.uid}`);
-        }
-      } else {
-        setProfile(null);
-      }
-      setIsAuthReady(true);
-    });
-  }, []);
-
-  const handleLogin = async (selectedRole: Role) => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const u = result.user;
-      
-      const docRef = doc(db, 'users', u.uid);
-      const docSnap = await getDoc(docRef);
-      
-      if (!docSnap.exists()) {
-        const newProfile: UserProfile = {
-          uid: u.uid,
-          email: u.email || '',
-          displayName: u.displayName || 'Anonymous User',
-          role: selectedRole,
-          badges: [],
-          joinedAt: new Date().toISOString()
-        };
-        await setDoc(docRef, newProfile);
-        setProfile(newProfile);
-      } else {
-        setProfile(docSnap.data() as UserProfile);
-      }
-    } catch (error) {
-      console.error("Login Error:", error);
-    }
+  const handleLogin = (selectedRole: Role) => {
+    const mockProfile: UserProfile = selectedRole === 'student' ? MOCK_STUDENT : MOCK_RECRUITER;
+    setProfile(mockProfile);
+    localStorage.setItem('crediskill-profile', JSON.stringify(mockProfile));
   };
 
-  const handleLogout = async () => {
-    await signOut(auth);
+  const handleLogout = () => {
+    setProfile(null);
+    localStorage.removeItem('crediskill-profile');
   };
-
-  if (!isAuthReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="h-12 w-12 text-indigo-600 animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <Router>
       <ErrorBoundary>
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<Landing onLogin={handleLogin} />} />
           <Route 
             path="/student/*" 
             element={
-              <ProtectedRoute requiredRole="student">
-                <StudentLayout onLogout={handleLogout} profile={profile!} />
-              </ProtectedRoute>
+              profile?.role === 'student' ? (
+                <StudentLayout onLogout={handleLogout} profile={profile} />
+              ) : (
+                <Navigate to="/" replace />
+              )
             } 
           />
           <Route 
             path="/recruiter/*" 
             element={
-              <ProtectedRoute requiredRole="recruiter">
-                <RecruiterLayout onLogout={handleLogout} profile={profile!} />
-              </ProtectedRoute>
+              profile?.role === 'recruiter' ? (
+                <RecruiterLayout onLogout={handleLogout} profile={profile} />
+              ) : (
+                <Navigate to="/" replace />
+              )
             } 
           />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -619,69 +518,17 @@ function RecruiterLayout({ onLogout, profile }: { onLogout: () => void, profile:
   );
 }
 
-function Landing() {
+function Landing({ onLogin }: { onLogin: (role: Role) => void }) {
   const navigate = useNavigate();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const handleLogin = async (targetRole: Role) => {
+  const handleLogin = (targetRole: Role) => {
     setIsLoggingIn(true);
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      // Check if user profile exists
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        // Create initial profile
-        await setDoc(userRef, {
-          uid: user.uid,
-          displayName: user.displayName || 'Anonymous User',
-          email: user.email,
-          role: targetRole,
-          badges: [],
-          bio: '',
-          joinedAt: Timestamp.now(),
-          updatedAt: Timestamp.now()
-        });
-      }
-
+    setTimeout(() => {
+      onLogin(targetRole);
       navigate(targetRole === 'recruiter' ? '/recruiter' : '/student');
-    } catch (error) {
-      console.error("Login error:", error);
-    }
-    setIsLoggingIn(false);
-  };
-
-  const handleDemoLogin = async (targetRole: Role) => {
-    setIsLoggingIn(true);
-    try {
-      const result = await signInAnonymously(auth);
-      const user = result.user;
-
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          uid: user.uid,
-          displayName: 'Demo User',
-          email: 'demo@example.com',
-          role: targetRole,
-          badges: [],
-          bio: 'This is a demo account.',
-          joinedAt: Timestamp.now(),
-          updatedAt: Timestamp.now()
-        });
-      }
-
-      navigate(targetRole === 'recruiter' ? '/recruiter' : '/student');
-    } catch (error) {
-      console.error("Demo login error:", error);
-    }
-    setIsLoggingIn(false);
+      setIsLoggingIn(false);
+    }, 800);
   };
 
   return (
@@ -738,26 +585,6 @@ function Landing() {
             >
               {isLoggingIn ? <Loader2 className="animate-spin" /> : "I'M A RECRUITER"}
             </Button>
-          </div>
-
-          <div className="mt-12 pt-12 border-t border-slate-100">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-6">Demo Mode (No Login Required)</p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <button 
-                onClick={() => handleDemoLogin('student')}
-                disabled={isLoggingIn}
-                className="flex-1 py-4 rounded-2xl border border-slate-100 bg-slate-50 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:bg-white hover:border-indigo-500 hover:text-indigo-600 transition-all"
-              >
-                STUDENT DEMO
-              </button>
-              <button 
-                onClick={() => handleDemoLogin('recruiter')}
-                disabled={isLoggingIn}
-                className="flex-1 py-4 rounded-2xl border border-slate-100 bg-slate-50 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:bg-white hover:border-indigo-500 hover:text-indigo-600 transition-all"
-              >
-                RECRUITER DEMO
-              </button>
-            </div>
           </div>
           <div className="mt-16 flex items-center gap-6">
             <div className="flex -space-x-4">
