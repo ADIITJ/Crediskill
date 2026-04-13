@@ -8,43 +8,66 @@
         "uid": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "displayName": { "type": "string" },
-        "role": { "type": "string", "enum": ["student", "recruiter", "admin"] },
-        "badges": { "type": "array", "items": { "type": "string" } }
+        "photoURL": { "type": "string" },
+        "totalScore": { "type": "number" },
+        "gamesPlayed": { "type": "number" },
+        "wins": { "type": "number" },
+        "xp": { "type": "number" },
+        "level": { "type": "number" },
+        "achievements": { "type": "array", "items": { "type": "string" } }
       },
-      "required": ["uid", "email", "role"]
+      "required": ["uid", "email"]
     },
-    "Task": {
-      "title": "Task",
-      "description": "Skill assessment task",
+    "Room": {
+      "title": "Room",
+      "description": "A game session",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "title": { "type": "string" },
-        "description": { "type": "string" },
-        "skill": { "type": "string" },
-        "difficulty": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] },
-        "submissionType": { "type": "string", "enum": ["code", "image", "video"] },
-        "requirements": { "type": "array", "items": { "type": "string" } }
+        "hostId": { "type": "string" },
+        "hostName": { "type": "string" },
+        "theme": { "type": "string" },
+        "gameType": { "type": "string", "enum": ["quiz", "guessing", "competition"] },
+        "status": { "type": "string", "enum": ["waiting", "playing", "finished"] },
+        "currentQuestionIndex": { "type": "number" },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": { "type": "string" },
+              "options": { "type": "array", "items": { "type": "string" } },
+              "answer": { "type": "string" },
+              "explanation": { "type": "string" }
+            }
+          }
+        },
+        "players": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "uid": { "type": "string" },
+              "displayName": { "type": "string" },
+              "score": { "type": "number" },
+              "lastAnswer": { "type": "string" },
+              "isReady": { "type": "boolean" },
+              "streak": { "type": "number" },
+              "powerups": {
+                "type": "object",
+                "properties": {
+                  "fiftyFiftyUsed": { "type": "boolean" },
+                  "doublePointsUsed": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "isKidFriendly": { "type": "boolean" },
+        "password": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "title", "skill", "difficulty", "submissionType"]
-    },
-    "Submission": {
-      "title": "Submission",
-      "description": "User's task submission",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "taskId": { "type": "string" },
-        "content": { "type": "string" },
-        "type": { "type": "string", "enum": ["code", "image", "video"] },
-        "score": { "type": "number" },
-        "status": { "type": "string", "enum": ["pending", "verified", "failed"] },
-        "feedback": { "type": "array", "items": { "type": "string" } },
-        "antiCheatStats": { "type": "object" },
-        "timestamp": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "userId", "taskId", "content", "type", "status"]
+      "required": ["id", "hostId", "theme", "gameType", "status", "isKidFriendly"]
     }
   },
   "firestore": {
@@ -52,13 +75,9 @@
       "schema": "User",
       "description": "User profiles"
     },
-    "/tasks/{taskId}": {
-      "schema": "Task",
-      "description": "Assessment tasks"
-    },
-    "/submissions/{submissionId}": {
-      "schema": "Submission",
-      "description": "User submissions"
+    "/rooms/{roomId}": {
+      "schema": "Room",
+      "description": "Game sessions"
     }
   }
 }

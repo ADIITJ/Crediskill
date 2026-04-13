@@ -1,71 +1,61 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;700;900&display=swap');
 
 @theme {
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-serif: "Fraunces", serif;
+  --font-display: "Anton", sans-serif;
+  --font-sans: "Inter", sans-serif;
 }
 
 :root {
-  --ink: #0F172A; /* Slate 900 */
-  --ink-muted: #64748B; /* Slate 500 */
-  --accent: #6366F1; /* Indigo 500 */
-  --accent-glow: rgba(99, 102, 241, 0.15);
-  --paper: #F8FAFC; /* Slate 50 */
-  --card: #FFFFFF;
-  --line: #E2E8F0; /* Slate 200 */
-  --shadow: rgba(15, 23, 42, 0.08);
+  --neon-green: #00FF00;
+  --brutal-black: #1A1A1A;
+  --gallery-white: #FDFCFB;
+  --aesthetic-pink: #FFB7C5;
+  --aesthetic-purple: #B19CD9;
+  --aesthetic-blue: #AEC6CF;
+  --aesthetic-orange: #FFD1DC;
+  --brutal-border: 6px solid #1A1A1A;
 }
 
 body {
-  background-color: var(--paper);
-  color: var(--ink);
-  @apply antialiased selection:bg-indigo-100 selection:text-indigo-900;
+  background-color: var(--gallery-white);
+  background-image: 
+    radial-gradient(var(--brutal-black) 1px, transparent 1px),
+    radial-gradient(var(--brutal-black) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: 0 0, 20px 20px;
+  background-attachment: fixed;
+  color: var(--brutal-black);
+  font-family: var(--font-sans);
+  @apply antialiased overflow-x-hidden;
 }
 
-.glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+.brutal-card {
+  @apply bg-white border-[6px] border-black p-8 shadow-[10px_10px_0px_0px_rgba(26,26,26,1)] transition-all rounded-2xl;
 }
 
-.glass-dark {
-  background: rgba(15, 23, 42, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+.brutal-card:hover {
+  @apply shadow-[4px_4px_0px_0px_rgba(26,26,26,1)] translate-x-[6px] translate-y-[6px];
 }
 
-.modern-card {
-  @apply bg-white p-8 transition-all duration-500 rounded-[2rem] border border-slate-100 hover:border-indigo-200 hover:shadow-[0_20px_50px_-12px_rgba(99,102,241,0.12)];
+.brutal-btn {
+  @apply bg-white border-[6px] border-black px-8 py-4 font-black uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(26,26,26,1)] transition-all active:shadow-none active:translate-x-[6px] active:translate-y-[6px] flex items-center justify-center gap-2 rounded-xl;
 }
 
-.modern-input {
-  @apply px-6 py-4 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none font-medium rounded-2xl transition-all duration-300;
+.brutal-btn-primary {
+  @apply bg-[#00FF00] hover:bg-[#00DD00];
 }
 
-.glow-indigo {
-  box-shadow: 0 0 20px var(--accent-glow);
+.brutal-btn-pink {
+  @apply bg-[#FFB7C5] hover:bg-[#FFA4B5];
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
+.brutal-btn-purple {
+  @apply bg-[#B19CD9] hover:bg-[#A18CC9];
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--line);
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--ink-muted);
+.brutal-input {
+  @apply w-full bg-white border-[6px] border-black p-6 font-black outline-none focus:bg-[#00FF00]/10 text-2xl uppercase placeholder:opacity-20 rounded-xl;
 }
 
 @keyframes marquee {
@@ -73,17 +63,42 @@ body {
   100% { transform: translateX(-50%); }
 }
 
-.marquee-container {
-  overflow: hidden;
-  white-space: nowrap;
-  @apply py-3 bg-slate-900 text-white font-bold uppercase tracking-[0.3em] text-[10px];
-}
-
-.marquee-content {
-  display: inline-block;
+.marquee-track {
+  display: flex;
   animation: marquee 30s linear infinite;
+  @apply py-6 border-y-[6px] border-black bg-[#FFB7C5] font-display text-6xl uppercase overflow-hidden whitespace-nowrap select-none;
 }
 
-.text-balance {
-  text-wrap: balance;
+.big-number {
+  @apply font-display text-[12rem] leading-none select-none drop-shadow-[4px_4px_0px_rgba(26,26,26,1)];
 }
+
+.glass {
+  @apply bg-white/80 backdrop-blur-md border-8 border-black;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 12px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-black/5 border-l-4 border-black;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-black border-4 border-white;
+}
+
+.animate-spin-slow {
+  animation: spin 8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.brutal-shadow {
+  @apply shadow-[8px_8px_0px_0px_rgba(0,0,0,1)];
+}
+

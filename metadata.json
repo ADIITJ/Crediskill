@@ -1,6 +1,6 @@
 {
-  "name": "Crediskill",
-  "description": "Next-generation skill verification platform using multimodal AI to bridge the trust gap between job seekers and recruiters.",
+  "name": "QuizWhiz AI",
+  "description": "A fun, AI-powered platform for hosting and playing custom quizzes, competitions, and guessing games for any audience.",
   "requestFramePermissions": [
     "camera",
     "microphone"

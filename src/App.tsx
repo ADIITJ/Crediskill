@@ -1,35 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Shield, 
-  Award, 
-  Code, 
-  Cpu, 
-  Zap, 
-  Globe, 
-  User, 
-  LogOut, 
+  Trophy, 
+  Users, 
+  Gamepad2, 
   Plus, 
-  Search, 
-  Filter, 
-  CheckCircle, 
-  AlertCircle, 
-  Clock, 
-  ChevronRight, 
+  LogOut, 
   ArrowRight, 
-  Loader2, 
-  Upload, 
-  Image as ImageIcon, 
-  Video, 
-  FileText, 
-  Layers,
-  MoreVertical,
+  Sparkles, 
+  Timer, 
+  CheckCircle2, 
+  XCircle,
+  Play,
+  User as UserIcon,
+  Search,
+  MessageSquare,
+  Zap,
   Star,
-  Mail,
-  MapPin,
-  BookOpen,
-  Languages,
-  Users,
-  ChevronDown
+  Crown,
+  Volume2,
+  Skull,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -37,102 +27,116 @@ import {
   db 
 } from './firebase';
 import { 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  onAuthStateChanged, 
+  signOut,
+  User
+} from 'firebase/auth';
+import { 
   BrowserRouter as Router, 
   Routes, 
   Route, 
   Navigate, 
   useNavigate,
-  useLocation
+  useParams
 } from 'react-router-dom';
 import { 
   collection, 
   doc, 
   getDoc, 
   setDoc, 
-  addDoc, 
+  updateDoc, 
+  addDoc,
+  onSnapshot, 
   query, 
   where, 
-  orderBy, 
-  onSnapshot, 
+  orderBy,
   Timestamp,
-  updateDoc,
-  increment,
-  limit,
-  getDocs
+  arrayUnion,
+  deleteDoc,
+  limit
 } from 'firebase/firestore';
-import Markdown from 'react-markdown';
-import { generateTask, generateAntiCheat, evaluateSubmission } from './services/gemini';
+import confetti from 'canvas-confetti';
+import { generateQuiz, generateGameIntro } from './services/gemini';
 
 // --- Types ---
-type Role = 'student' | 'recruiter' | 'admin';
 
 interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
-  role: Role;
-  badges: string[];
-  college?: string;
-  languages?: string[];
-  courses?: string[];
-  bio?: string;
-  location?: string;
-  joinedAt?: any;
-  companyName?: string;
-  industry?: string;
-  website?: string;
+  photoURL: string;
+  totalScore: number;
+  gamesPlayed: number;
+  wins: number;
+  xp: number;
+  level: number;
+  achievements: string[];
 }
 
-interface Task {
-  id?: string;
-  title: string;
-  description: string;
-  type: 'code' | 'image' | 'video';
-  difficulty: 'beginner' | 'intermediate' | 'expert';
-  submissionType: 'code' | 'image' | 'video';
+interface Question {
+  text: string;
+  options?: string[];
+  answer: string;
+  explanation: string;
 }
 
-interface Submission {
-  id?: string;
-  userId: string;
-  taskId: string;
-  taskTitle: string;
-  type: string;
-  content: string;
-  status: 'pending' | 'verified' | 'rejected';
+interface Player {
+  uid: string;
+  displayName: string;
   score: number;
-  feedback: string[];
-  reasoning?: string;
-  timestamp: any;
+  lastAnswer: string;
+  isReady: boolean;
+  streak: number;
+  powerups: {
+    fiftyFiftyUsed: boolean;
+    doublePointsUsed: boolean;
+  };
+}
+
+interface Room {
+  id: string;
+  hostId: string;
+  hostName: string;
+  theme: string;
+  gameType: 'quiz' | 'guessing' | 'competition';
+  status: 'waiting' | 'playing' | 'finished';
+  currentQuestionIndex: number;
+  questions: Question[];
+  players: Player[];
+  intro?: string;
+  isKidFriendly: boolean;
+  password?: string;
+  createdAt: any;
 }
 
 // --- Components ---
 
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
-}
-
-function Badge({ children, color = "bg-indigo-600 text-white", className }: { children: React.ReactNode, color?: string, className?: string }) {
+function Marquee() {
   return (
-    <span className={cn("px-3 py-1 text-[10px] font-black uppercase tracking-[0.15em] rounded-lg border border-transparent", color, className)}>
-      {children}
-    </span>
+    <div className="marquee-track">
+      {[...Array(10)].map((_, i) => (
+        <span key={i} className="mx-8">
+          QUIZWHIZ AI • HOST ANY GAME • AI GENERATED FUN • ADULT RATED • CHILD FRIENDLY • EDUCATIONAL • UNHINGED HOST • 
+        </span>
+      ))}
+    </div>
   );
 }
 
-function Button({ children, onClick, variant = "primary", className, disabled, type = "button" }: { 
+function Button({ children, onClick, variant = "secondary", className, disabled, type = "button" }: { 
   children: React.ReactNode, 
   onClick?: () => void, 
-  variant?: "primary" | "secondary" | "danger" | "ghost", 
+  variant?: "primary" | "secondary" | "danger", 
   className?: string,
   disabled?: boolean,
   type?: "button" | "submit"
 }) {
   const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm hover:shadow-indigo-200",
-    secondary: "bg-white text-gray-900 border border-gray-200 hover:bg-gray-50 shadow-sm",
-    danger: "bg-red-600 text-white hover:bg-red-700 shadow-sm",
-    ghost: "bg-transparent text-gray-600 hover:bg-gray-100"
+    primary: "brutal-btn-primary",
+    secondary: "bg-white",
+    danger: "bg-red-500 text-white"
   };
 
   return (
@@ -140,1534 +144,1020 @@ function Button({ children, onClick, variant = "primary", className, disabled, t
       type={type}
       onClick={onClick} 
       disabled={disabled}
-      className={cn(
-        "px-6 py-2.5 font-bold uppercase tracking-wider text-sm transition-all rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2",
-        variants[variant],
-        className
-      )}
+      className={`brutal-btn ${variants[variant]} ${className} disabled:opacity-50`}
     >
       {children}
     </button>
   );
 }
 
-function Card({ children, className, hover = true }: { children: React.ReactNode, className?: string, hover?: boolean }) {
-  return (
-    <div className={cn(
-      "bg-white p-8 transition-all duration-500 rounded-[2.5rem] border border-slate-100",
-      hover && "hover:border-indigo-200 hover:shadow-[0_30px_60px_-15px_rgba(99,102,241,0.1)]",
-      className
-    )}>
-      {children}
-    </div>
-  );
-}
-
-// --- Error Handling ---
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: 'demo-user',
-      email: 'demo@example.com',
-      emailVerified: true,
-      isAnonymous: true,
-      tenantId: null,
-      providerInfo: []
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      let errorMessage = "Something went wrong.";
-      try {
-        const parsed = JSON.parse(this.state.error.message);
-        if (parsed.error) errorMessage = `Database Error: ${parsed.error}`;
-      } catch (e) {
-        errorMessage = this.state.error.message || errorMessage;
-      }
-
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-          <div className="max-w-md w-full glass p-10 rounded-[2.5rem] border border-rose-100 shadow-2xl shadow-rose-200/20 text-center">
-            <div className="h-20 w-20 bg-rose-50 rounded-3xl flex items-center justify-center mx-auto mb-8">
-              <AlertCircle className="h-10 w-10 text-rose-500" />
-            </div>
-            <h2 className="text-3xl font-serif italic font-black text-slate-900 mb-4">Application Error</h2>
-            <p className="text-slate-500 font-medium mb-8 leading-relaxed">{errorMessage}</p>
-            <Button onClick={() => window.location.reload()} className="w-full py-4 rounded-2xl bg-slate-900 text-white">RELOAD APPLICATION</Button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-function MediaUpload({ type, onUpload }: { type: 'image' | 'video', onUpload: (base64: string, mimeType: string) => void }) {
-  const [preview, setPreview] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = (file: File) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      setPreview(base64);
-      onUpload(base64.split(',')[1], file.type);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  return (
-    <div 
-      className={cn(
-        "border-2 border-dashed border-gray-200 rounded-3xl h-96 flex flex-col items-center justify-center transition-all cursor-pointer relative overflow-hidden bg-gray-50/50 hover:border-indigo-300 hover:bg-indigo-50/30",
-        isDragging ? "bg-[#00FF00]/10 border-[#00FF00]" : "bg-gray-50",
-        preview && "border-solid"
-      )}
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={(e) => { e.preventDefault(); setIsDragging(false); handleFile(e.dataTransfer.files[0]); }}
-      onClick={() => fileInputRef.current?.click()}
-    >
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        accept={type === 'image' ? "image/*" : "video/*"} 
-        onChange={(e) => e.target.files && handleFile(e.target.files[0])}
-      />
-      
-      {preview ? (
-        type === 'image' ? (
-          <img src={preview} className="absolute inset-0 w-full h-full object-contain p-4" alt="Preview" referrerPolicy="no-referrer" />
-        ) : (
-          <video src={preview} className="absolute inset-0 w-full h-full object-contain p-4" controls />
-        )
-      ) : (
-        <div className="text-center p-8">
-          {type === 'image' ? <ImageIcon className="h-16 w-16 mx-auto mb-4 opacity-40" /> : <Video className="h-16 w-16 mx-auto mb-4 opacity-40" />}
-          <p className="text-2xl font-black uppercase mb-2">Drop your {type} here</p>
-          <p className="text-xs font-bold uppercase opacity-40 mb-6">or click to browse files</p>
-          <Button variant="secondary" className="text-xs">SELECT {type.toUpperCase()}</Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- Mock Data for Demo ---
-const MOCK_STUDENT: UserProfile = {
-  uid: 'demo-student-123',
-  email: 'student@demo.com',
-  displayName: 'Alex Rivers',
-  role: 'student',
-  badges: ['React Expert', 'UI/UX Master', 'Problem Solver'],
-  college: 'Tech University',
-  languages: ['TypeScript', 'Python', 'Rust'],
-  courses: ['Advanced Web Dev', 'Data Structures'],
-  bio: 'Passionate developer building the future of web apps.',
-  location: 'San Francisco, CA',
-  joinedAt: new Date().toISOString()
-};
-
-const MOCK_RECRUITER: UserProfile = {
-  uid: 'demo-recruiter-456',
-  email: 'recruiter@techcorp.com',
-  displayName: 'Sarah Chen',
-  role: 'recruiter',
-  badges: [],
-  companyName: 'TechCorp Solutions',
-  industry: 'Software Engineering',
-  website: 'https://techcorp.example.com',
-  bio: 'Looking for top-tier talent in frontend and AI.',
-  location: 'New York, NY',
-  joinedAt: new Date().toISOString()
-};
-
-const MOCK_SUBMISSIONS: Submission[] = [
-  {
-    id: 's1',
-    userId: 'demo-student-123',
-    taskId: 't1',
-    taskTitle: 'React Performance Optimization',
-    type: 'code',
-    content: 'const memoizedValue = useMemo(() => compute(a, b), [a, b]);',
-    status: 'verified',
-    score: 95,
-    feedback: ['Excellent use of useMemo', 'Clean code structure'],
-    reasoning: 'The candidate demonstrated deep understanding of React rendering cycles.',
-    timestamp: new Date().toISOString()
-  },
-  {
-    id: 's2',
-    userId: 'demo-student-123',
-    taskId: 't2',
-    taskTitle: 'Brand Identity Design',
-    type: 'image',
-    content: 'https://picsum.photos/seed/design/800/600',
-    status: 'verified',
-    score: 88,
-    feedback: ['Strong color palette', 'Consistent branding'],
-    reasoning: 'The visual hierarchy is well-balanced and professional.',
-    timestamp: new Date().toISOString()
-  }
-];
-
-// --- Main Application ---
+// --- Main App ---
 
 export default function App() {
-  const [profile, setProfile] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('crediskill-profile');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const handleLogin = (selectedRole: Role) => {
-    const mockProfile: UserProfile = selectedRole === 'student' ? MOCK_STUDENT : MOCK_RECRUITER;
-    setProfile(mockProfile);
-    localStorage.setItem('crediskill-profile', JSON.stringify(mockProfile));
-  };
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (u) {
+        const userRef = doc(db, 'users', u.uid);
+        getDoc(userRef).then((snap) => {
+          if (!snap.exists()) {
+            setDoc(userRef, {
+              uid: u.uid,
+              email: u.email,
+              displayName: u.displayName,
+              photoURL: u.photoURL,
+              totalScore: 0,
+              gamesPlayed: 0,
+              wins: 0,
+              xp: 0,
+              level: 1,
+              achievements: []
+            });
+          }
+          setLoading(false);
+        });
+      } else {
+        setLoading(false);
+      }
+    });
+    return unsubscribe;
+  }, []);
 
-  const handleLogout = () => {
-    setProfile(null);
-    localStorage.removeItem('crediskill-profile');
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <motion.div 
+          animate={{ rotate: 360, scale: [1, 1.2, 1] }}
+          transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <Sparkles className="h-16 w-16 text-[#00FF00]" />
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <Router>
-      <ErrorBoundary>
+      <div className="min-h-screen flex flex-col font-sans selection:bg-[#00FF00] selection:text-black">
         <Routes>
-          <Route path="/" element={<Landing onLogin={handleLogin} />} />
-          <Route 
-            path="/student/*" 
-            element={
-              profile?.role === 'student' ? (
-                <StudentLayout onLogout={handleLogout} profile={profile} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            } 
-          />
-          <Route 
-            path="/recruiter/*" 
-            element={
-              profile?.role === 'recruiter' ? (
-                <RecruiterLayout onLogout={handleLogout} profile={profile} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            } 
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
+          <Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/" />} />
+          <Route path="/create" element={user ? <CreateRoom user={user} /> : <Navigate to="/" />} />
+          <Route path="/room/:id" element={user ? <GameRoom user={user} /> : <Navigate to="/" />} />
         </Routes>
-      </ErrorBoundary>
+      </div>
     </Router>
   );
 }
 
-function StudentLayout({ onLogout, profile }: { onLogout: () => void, profile: UserProfile }) {
-  const [currentProfile, setCurrentProfile] = useState<UserProfile>(profile);
-  const navigate = useNavigate();
-  const location = useLocation();
-  const subView = location.pathname.split('/').pop() || 'dashboard';
-
-  return (
-    <div className="min-h-screen bg-slate-50/50 font-sans flex flex-col selection:bg-indigo-100 selection:text-indigo-900">
-      <header className="sticky top-0 z-50 flex items-center justify-between glass px-10 py-6 border-b border-slate-200/50 shadow-sm">
-        <div className="flex items-center gap-8">
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/student/dashboard')}>
-            <div className="h-11 w-11 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-200 group-hover:rotate-12 transition-all duration-500">
-              <Shield className="h-6 w-6 text-white" />
-            </div>
-            <h1 className="text-2xl font-black uppercase tracking-tighter text-slate-900">Crediskill</h1>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-12">
-          <nav className="hidden md:flex items-center gap-12">
-            <button onClick={() => navigate('/student/dashboard')} className={cn("text-[11px] font-black uppercase tracking-[0.25em] transition-all hover:text-indigo-600", subView === 'dashboard' ? "text-indigo-600" : "text-slate-400")}>Dashboard</button>
-            <button onClick={() => navigate('/student/skills')} className={cn("text-[11px] font-black uppercase tracking-[0.25em] transition-all hover:text-indigo-600", subView === 'skills' ? "text-indigo-600" : "text-slate-400")}>My Skills</button>
-            <button onClick={() => navigate('/student/profile')} className={cn("text-[11px] font-black uppercase tracking-[0.25em] transition-all hover:text-indigo-600", subView === 'profile' ? "text-indigo-600" : "text-slate-400")}>Profile</button>
-          </nav>
-
-          <div className="flex items-center gap-6 pl-10 border-l border-slate-200">
-            <div className="flex items-center gap-4 bg-white/50 px-5 py-2.5 rounded-[1.5rem] border border-slate-200 shadow-sm">
-              <div className="text-right">
-                <p className="text-xs font-black text-slate-900 leading-none">{currentProfile.displayName}</p>
-                <span className="text-[9px] uppercase tracking-widest text-slate-500 font-bold mt-1.5 block">{currentProfile.role}</span>
-              </div>
-              <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center cursor-pointer shadow-sm hover:shadow-md transition-all group" onClick={() => navigate('/student/profile')}>
-                <User className="h-5 w-5 text-indigo-600 group-hover:scale-110 transition-transform" />
-              </div>
-              <button onClick={onLogout} className="text-slate-300 hover:text-rose-500 transition-colors ml-2">
-                <LogOut className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1">
-        <Routes>
-          <Route path="dashboard" element={<StudentHub profile={currentProfile} />} />
-          <Route path="skills" element={<StudentSkills profile={currentProfile} />} />
-          <Route path="profile" element={<UserProfilePage profile={currentProfile} />} />
-          <Route path="*" element={<Navigate to="dashboard" replace />} />
-        </Routes>
-      </main>
-    </div>
-  );
-}
-
-function RecruiterLayout({ onLogout, profile }: { onLogout: () => void, profile: UserProfile }) {
-  const [currentProfile, setCurrentProfile] = useState<UserProfile>(profile);
-  const navigate = useNavigate();
-  const location = useLocation();
-  const subView = location.pathname.split('/').pop() || 'dashboard';
-
-  return (
-    <div className="min-h-screen bg-slate-50/50 font-sans flex flex-col selection:bg-indigo-100 selection:text-indigo-900">
-      <header className="sticky top-0 z-50 flex items-center justify-between glass px-10 py-6 border-b border-slate-200/50 shadow-sm">
-        <div className="flex items-center gap-8">
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/recruiter/dashboard')}>
-            <div className="h-11 w-11 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-200 group-hover:rotate-12 transition-all duration-500">
-              <Shield className="h-6 w-6 text-white" />
-            </div>
-            <h1 className="text-2xl font-black uppercase tracking-tighter text-slate-900">Crediskill</h1>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-12">
-          <nav className="hidden md:flex items-center gap-12">
-            <button onClick={() => navigate('/recruiter/dashboard')} className={cn("text-[11px] font-black uppercase tracking-[0.25em] transition-all hover:text-indigo-600", subView === 'dashboard' ? "text-indigo-600" : "text-slate-400")}>Talent Pool</button>
-            <button onClick={() => navigate('/recruiter/search')} className={cn("text-[11px] font-black uppercase tracking-[0.25em] transition-all hover:text-indigo-600", subView === 'search' ? "text-indigo-600" : "text-slate-400")}>Search</button>
-            <button onClick={() => navigate('/recruiter/profile')} className={cn("text-[11px] font-black uppercase tracking-[0.25em] transition-all hover:text-indigo-600", subView === 'profile' ? "text-indigo-600" : "text-slate-400")}>Company Profile</button>
-          </nav>
-
-          <div className="flex items-center gap-6 pl-10 border-l border-slate-200">
-            <div className="flex items-center gap-4 bg-white/50 px-5 py-2.5 rounded-[1.5rem] border border-slate-200 shadow-sm">
-              <div className="text-right">
-                <p className="text-xs font-black text-slate-900 leading-none">{currentProfile.displayName}</p>
-                <span className="text-[9px] uppercase tracking-widest text-slate-500 font-bold mt-1.5 block">{currentProfile.role}</span>
-              </div>
-              <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center cursor-pointer shadow-sm hover:shadow-md transition-all group" onClick={() => navigate('/recruiter/profile')}>
-                <User className="h-5 w-5 text-indigo-600 group-hover:scale-110 transition-transform" />
-              </div>
-              <button onClick={onLogout} className="text-slate-300 hover:text-rose-500 transition-colors ml-2">
-                <LogOut className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1">
-        <Routes>
-          <Route path="dashboard" element={<RecruiterDashboard profile={currentProfile} />} />
-          <Route path="search" element={<RecruiterSearch />} />
-          <Route path="profile" element={<UserProfilePage profile={currentProfile} />} />
-          <Route path="*" element={<Navigate to="dashboard" replace />} />
-        </Routes>
-      </main>
-    </div>
-  );
-}
-
-function Landing({ onLogin }: { onLogin: (role: Role) => void }) {
-  const navigate = useNavigate();
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-
-  const handleLogin = (targetRole: Role) => {
-    setIsLoggingIn(true);
-    setTimeout(() => {
-      onLogin(targetRole);
-      navigate(targetRole === 'recruiter' ? '/recruiter' : '/student');
-      setIsLoggingIn(false);
-    }, 800);
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 overflow-hidden selection:bg-indigo-100 selection:text-indigo-900">
-      {/* Marquee */}
-      <div className="marquee-container border-none bg-slate-900 text-white">
-        <div className="marquee-content">
-          {[...Array(10)].map((_, i) => (
-            <span key={i} className="mx-12 font-black tracking-[0.3em] text-[10px]">VERIFIED SKILLS ONLY • NO FLUFF • AI POWERED • PROOF OF WORK • </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[calc(100vh-44px)]">
-        {/* Left: Hero */}
-        <div className="p-12 lg:p-24 flex flex-col justify-center bg-white relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-full -z-10">
-            <div className="absolute top-0 left-0 w-64 h-64 bg-indigo-50/50 blur-[100px] rounded-full" />
-          </div>
-
-          <motion.div 
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="mb-12"
-          >
-            <div className="h-16 w-16 bg-indigo-600 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-indigo-200">
-              <Shield className="h-8 w-8 text-white" />
-            </div>
-          </motion.div>
-          
-          <h1 className="text-[clamp(3rem,8vw,6rem)] font-serif italic font-black leading-[0.85] tracking-tight mb-10 text-slate-900 text-balance">
-            Show, <br />
-            Don't <br />
-            <span className="text-indigo-600 not-italic">Tell.</span>
-          </h1>
-          
-          <p className="text-xl font-medium max-w-md mb-12 text-slate-500 leading-relaxed">
-            The next-generation skill verification platform. Prove your expertise with real-time, AI-verified assessments that recruiters trust.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-6">
-            <Button 
-              onClick={() => handleLogin('student')} 
-              disabled={isLoggingIn}
-              className="text-base px-12 py-5 bg-indigo-600 text-white flex-1 rounded-[1.5rem] shadow-2xl shadow-indigo-100 hover:shadow-indigo-200"
-            >
-              {isLoggingIn ? <Loader2 className="animate-spin" /> : "I'M A STUDENT"}
-            </Button>
-            <Button 
-              onClick={() => handleLogin('recruiter')} 
-              disabled={isLoggingIn}
-              variant="secondary" 
-              className="text-base px-12 py-5 flex-1 rounded-[1.5rem] border-slate-200 text-slate-700"
-            >
-              {isLoggingIn ? <Loader2 className="animate-spin" /> : "I'M A RECRUITER"}
-            </Button>
-          </div>
-          <div className="mt-16 flex items-center gap-6">
-            <div className="flex -space-x-4">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="h-12 w-12 rounded-full border-4 border-white bg-slate-100 flex items-center justify-center overflow-hidden shadow-sm">
-                  <img src={`https://picsum.photos/seed/user${i}/100/100`} alt="User" referrerPolicy="no-referrer" />
-                </div>
-              ))}
-            </div>
-            <p className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em]">Joined by 2,000+ experts</p>
-          </div>
-        </div>
-
-        {/* Right: Features Grid */}
-        <div className="bg-slate-50 p-12 lg:p-24 flex flex-col justify-center relative">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <Card className="modern-card group border-none">
-              <div className="h-14 w-14 bg-amber-50 rounded-2xl flex items-center justify-center mb-8 group-hover:bg-amber-500 transition-colors duration-500">
-                <Code className="h-7 w-7 text-amber-600 group-hover:text-white transition-colors duration-500" />
-              </div>
-              <h3 className="text-xl font-serif italic font-black mb-4 text-slate-900">Code Integrity</h3>
-              <p className="font-medium text-sm text-slate-500 leading-relaxed">Real-time anti-cheat challenges that verify you actually understand the code you write.</p>
-            </Card>
-            
-            <Card className="modern-card group border-none">
-              <div className="h-14 w-14 bg-emerald-50 rounded-2xl flex items-center justify-center mb-8 group-hover:bg-emerald-500 transition-colors duration-500">
-                <Zap className="h-7 w-7 text-emerald-600 group-hover:text-white transition-colors duration-500" />
-              </div>
-              <h3 className="text-xl font-serif italic font-black mb-4 text-slate-900">AI Evaluation</h3>
-              <p className="font-medium text-sm text-slate-500 leading-relaxed">Instant, objective grading powered by Gemini 3. Get verified in minutes.</p>
-            </Card>
-            
-            <Card className="modern-card group border-none">
-              <div className="h-14 w-14 bg-rose-50 rounded-2xl flex items-center justify-center mb-8 group-hover:bg-rose-500 transition-colors duration-500">
-                <Award className="h-7 w-7 text-rose-600 group-hover:text-white transition-colors duration-500" />
-              </div>
-              <h3 className="text-xl font-serif italic font-black mb-4 text-slate-900">Proof of Work</h3>
-              <p className="font-medium text-sm text-slate-500 leading-relaxed">Build a portfolio of verified badges that recruiters can trust implicitly.</p>
-            </Card>
-            
-            <Card className="bg-slate-900 border-none shadow-[0_30px_60px_-15px_rgba(15,23,42,0.3)] p-10 rounded-[2.5rem] text-white group">
-              <div className="h-14 w-14 bg-white/10 rounded-2xl flex items-center justify-center mb-8 group-hover:bg-indigo-500 transition-colors duration-500">
-                <Globe className="h-7 w-7 text-white" />
-              </div>
-              <h3 className="text-xl font-serif italic font-black mb-4">Multimodal</h3>
-              <p className="font-medium text-sm text-slate-400 leading-relaxed">Submit code, designs, or videos. Our AI analyzes visual and auditory quality.</p>
-            </Card>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StudentSkills({ profile }: { profile: UserProfile }) {
-  const [submissions] = useState<Submission[]>(MOCK_SUBMISSIONS);
-
-  const pendingSkills = submissions.filter(s => s.status === 'pending');
-  const verifiedSkills = profile.badges;
-
-  return (
-    <div className="space-y-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <section>
-        <div className="mb-10">
-          <Badge color="bg-emerald-100 text-emerald-600 mb-4 px-4 py-1.5 text-xs">Verified Expertise</Badge>
-          <h2 className="text-6xl font-black uppercase tracking-tighter text-gray-900">Verified Skills</h2>
-          <p className="text-sm font-medium text-gray-400 mt-2 uppercase tracking-widest">Skills you've successfully proven through challenges</p>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {verifiedSkills.map(skill => (
-            <Card key={skill} className="bg-white p-10 flex flex-col items-center text-center group border-emerald-100 hover:border-emerald-200 shadow-lg shadow-emerald-900/5">
-              <div className="h-20 w-20 bg-emerald-50 rounded-3xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
-                <Award className="h-10 w-10 text-emerald-600" />
-              </div>
-              <h3 className="text-3xl font-black uppercase text-gray-900">{skill}</h3>
-              <Badge color="bg-emerald-50 text-emerald-600 mt-6 px-4 py-1.5 border border-emerald-100">Verified Expert</Badge>
-            </Card>
-          ))}
-          {verifiedSkills.length === 0 && (
-            <div className="col-span-3 p-20 rounded-3xl border-2 border-dashed border-gray-100 text-center">
-              <div className="h-16 w-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <Award className="h-8 w-8 text-gray-300" />
-              </div>
-              <p className="text-xl font-bold text-gray-300 uppercase tracking-tight">No verified skills yet. Start a challenge!</p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section>
-        <div className="mb-8">
-          <h2 className="text-4xl font-black uppercase tracking-tighter text-gray-900">Pending Verification</h2>
-          <p className="text-sm font-medium text-gray-400 mt-2 uppercase tracking-widest">Challenges currently under AI review</p>
-        </div>
-        
-        <div className="space-y-4">
-          {pendingSkills.map(sub => (
-            <Card key={sub.id} className="flex items-center justify-between p-6 bg-white border-gray-100 hover:border-amber-200 shadow-sm">
-              <div className="flex items-center gap-6">
-                <div className="h-14 w-14 bg-amber-50 rounded-2xl flex items-center justify-center">
-                  <Clock className="h-7 w-7 text-amber-600" />
-                </div>
-                <div>
-                  <h4 className="text-xl font-black uppercase text-gray-900">{sub.taskTitle}</h4>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">
-                    {sub.type} • {new Date(sub.timestamp).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-              <Badge color="bg-amber-50 text-amber-600 border border-amber-100">Under Review</Badge>
-            </Card>
-          ))}
-          {pendingSkills.length === 0 && (
-            <div className="p-12 rounded-2xl bg-gray-50/50 border border-gray-100 text-center">
-              <p className="font-bold uppercase tracking-widest text-gray-300">No pending verifications.</p>
-            </div>
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function UserProfilePage({ profile }: { profile: UserProfile }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState(profile);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    setIsSaving(true);
+function Landing() {
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
     try {
-      const userRef = doc(db, 'users', profile.uid);
-      await updateDoc(userRef, {
-        ...formData,
-        updatedAt: Timestamp.now()
-      });
-      setIsEditing(false);
+      await signInWithPopup(auth, provider);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
+      console.error("Login failed", error);
     }
-    setIsSaving(false);
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-16">
-        <div>
-          <Badge color="bg-indigo-100 text-indigo-600 mb-4 px-4 py-1.5 text-xs">Profile Management</Badge>
-          <h2 className="text-7xl font-black uppercase tracking-tighter leading-none text-gray-900">Profile</h2>
-          <p className="font-medium text-gray-400 mt-4 uppercase tracking-widest">Manage your professional identity</p>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <Marquee />
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2">
+        <div className="p-12 lg:p-24 flex flex-col justify-center bg-white relative">
+          <div className="absolute top-12 left-12 opacity-20 hidden lg:block">
+            <Star className="h-24 w-24 animate-pulse" />
+          </div>
+          <motion.div
+            initial={{ x: -100, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ type: "spring", damping: 12 }}
+          >
+            <h1 className="font-display text-[clamp(4rem,12vw,10rem)] leading-[0.75] mb-8 tracking-tighter">
+              QUIZ<br />WHIZ<br /><span className="text-[#00FF00] drop-shadow-[4px_4px_0px_rgba(0,0,0,1)]">AI</span>
+            </h1>
+            <p className="text-2xl font-black mb-12 max-w-md border-l-8 border-[#00FF00] pl-6 py-2">
+              THE CHAOTIC AI GAME SHOW HOST. CREATE UNHINGED CHALLENGES FOR ANY THEME IN SECONDS.
+            </p>
+            <Button onClick={handleLogin} variant="primary" className="text-3xl py-6 px-12 group">
+              JOIN THE CHAOS <ArrowRight className="inline ml-4 group-hover:translate-x-2 transition-transform" />
+            </Button>
+          </motion.div>
         </div>
-        <Button onClick={() => isEditing ? handleSave() : setIsEditing(true)} className="px-10 py-4 rounded-2xl shadow-xl shadow-indigo-200">
-          {isEditing ? "SAVE CHANGES" : "EDIT PROFILE"}
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
-        <div className="md:col-span-1 space-y-8">
-          <Card className="bg-white p-10 flex flex-col items-center text-center border-gray-100 shadow-xl shadow-indigo-900/5" hover={false}>
-            <div className="h-40 w-40 rounded-3xl bg-indigo-50 flex items-center justify-center mb-8 shadow-inner">
-              <User className="h-20 w-20 text-indigo-600" />
-            </div>
-            <h3 className="text-3xl font-black uppercase tracking-tight text-gray-900">{profile.displayName}</h3>
-            <Badge color="bg-gray-100 text-gray-500 mt-3 px-4 py-1.5 uppercase tracking-widest text-[10px]">{profile.role}</Badge>
-          </Card>
-
-          <Card className="bg-indigo-600 text-white p-8 rounded-[2rem] shadow-xl shadow-indigo-200" hover={false}>
-            <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] mb-6 opacity-60">Quick Stats</h4>
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-[10px] tracking-widest opacity-60">Verified Skills</span>
-                <span className="text-2xl font-black">{profile.badges.length}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="font-bold uppercase text-[10px] tracking-widest opacity-60">Member Since</span>
-                <span className="text-2xl font-black">{profile.joinedAt ? new Date(profile.joinedAt).getFullYear() : '2026'}</span>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        <div className="md:col-span-2 space-y-8">
-          <Card className="bg-white p-10 space-y-10 border-gray-100 shadow-xl shadow-indigo-900/5" hover={false}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">Full Name</label>
-                {isEditing ? (
-                  <input 
-                    className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none font-bold uppercase transition-all" 
-                    value={formData.displayName} 
-                    onChange={e => setFormData({...formData, displayName: e.target.value})}
-                  />
-                ) : (
-                  <p className="text-xl font-black uppercase text-gray-900">{profile.displayName}</p>
-                )}
-              </div>
-              
-              {profile.role === 'student' ? (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">College / University</label>
-                  {isEditing ? (
-                    <input 
-                      className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none font-bold uppercase transition-all" 
-                      value={formData.college || ''} 
-                      onChange={e => setFormData({...formData, college: e.target.value})}
-                    />
-                  ) : (
-                    <p className="text-xl font-black uppercase text-gray-900">{profile.college || 'Not specified'}</p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">Company Name</label>
-                  {isEditing ? (
-                    <input 
-                      className="w-full px-5 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none font-bold uppercase transition-all" 
-                      value={formData.companyName || ''} 
-                      onChange={e => setFormData({...formData, companyName: e.target.value})}
-                    />
-                  ) : (
-                    <p className="text-xl font-black uppercase text-gray-900">{profile.companyName || 'Not specified'}</p>
-                  )}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">Location</label>
-                {isEditing ? (
-                  <input 
-                    className="modern-input w-full px-5 py-3 font-bold uppercase" 
-                    value={formData.location || ''} 
-                    onChange={e => setFormData({...formData, location: e.target.value})}
-                  />
-                ) : (
-                  <p className="text-xl font-black uppercase text-slate-900">{profile.location || 'Remote'}</p>
-                )}
-              </div>
-
-              {profile.role === 'recruiter' && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Industry</label>
-                  {isEditing ? (
-                    <input 
-                      className="modern-input w-full px-5 py-3 font-bold uppercase" 
-                      value={formData.industry || ''} 
-                      onChange={e => setFormData({...formData, industry: e.target.value})}
-                    />
-                  ) : (
-                    <p className="text-xl font-black uppercase text-slate-900">{profile.industry || 'Not specified'}</p>
-                  )}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Email</label>
-                <p className="text-xl font-black uppercase text-slate-300">{profile.email}</p>
-              </div>
-
-              {profile.role === 'recruiter' && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Website</label>
-                  {isEditing ? (
-                    <input 
-                      className="modern-input w-full px-5 py-3 font-bold uppercase" 
-                      value={formData.website || ''} 
-                      onChange={e => setFormData({...formData, website: e.target.value})}
-                    />
-                  ) : (
-                    <p className="text-xl font-black uppercase text-slate-900">{profile.website || 'Not specified'}</p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Bio</label>
-              {isEditing ? (
-                <textarea 
-                  className="modern-input w-full px-5 py-4 font-bold uppercase h-32 resize-none" 
-                  value={formData.bio || ''} 
-                  onChange={e => setFormData({...formData, bio: e.target.value})}
-                />
-              ) : (
-                <p className="text-lg font-medium text-slate-600 leading-relaxed italic">"{profile.bio || 'No bio provided.'}"</p>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Languages</label>
-              {isEditing ? (
-                <input 
-                  className="modern-input w-full px-5 py-3 font-bold uppercase" 
-                  placeholder="e.g. English, Hindi, Spanish (comma separated)"
-                  value={formData.languages?.join(', ') || ''} 
-                  onChange={e => setFormData({...formData, languages: e.target.value.split(',').map(s => s.trim())})}
-                />
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {profile.languages?.map(l => <Badge key={l} color="bg-slate-50 text-slate-500 border border-slate-100">{l}</Badge>)}
-                  {(!profile.languages || profile.languages.length === 0) && <p className="font-bold uppercase tracking-widest text-slate-300 text-xs">None specified</p>}
-                </div>
-              )}
-            </div>
-          </Card>
+        <div className="bg-[#00FF00] border-l-4 border-black p-12 lg:p-24 flex items-center justify-center relative overflow-hidden">
+          <div className="absolute inset-0 opacity-20 pointer-events-none">
+            {[...Array(30)].map((_, i) => (
+              <Zap key={i} className="absolute animate-bounce" style={{ 
+                top: `${Math.random() * 100}%`, 
+                left: `${Math.random() * 100}%`,
+                transform: `rotate(${Math.random() * 360}deg)`,
+                animationDelay: `${Math.random() * 2}s`
+              }} />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-8 relative z-10">
+            <motion.div 
+              whileHover={{ scale: 1.05, rotate: 2 }}
+              className="brutal-card bg-white max-w-sm rotate-3"
+            >
+              <div className="big-number mb-4 text-[#00FF00] drop-shadow-[2px_2px_0px_rgba(0,0,0,1)]">01</div>
+              <h3 className="text-4xl font-display mb-4">UNHINGED AI</h3>
+              <p className="font-black uppercase text-sm">Our AI host has no filter and a lot of coffee. Expect the unexpected.</p>
+            </motion.div>
+            <motion.div 
+              whileHover={{ scale: 1.05, rotate: -2 }}
+              className="brutal-card bg-white max-w-sm -rotate-3 lg:ml-12"
+            >
+              <div className="big-number mb-4 text-[#00FF00] drop-shadow-[2px_2px_0px_rgba(0,0,0,1)]">02</div>
+              <h3 className="text-4xl font-display mb-4">ANY VIBE</h3>
+              <p className="font-black uppercase text-sm">From "90s Anime" to "Drunk Philosophy". If you can think it, AI can host it.</p>
+            </motion.div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-const DEMO_STUDENTS: UserProfile[] = [
-  { uid: 'demo1', displayName: 'Aarav Sharma', college: 'IIT Bombay', badges: ['React', 'Node.js', 'UI Design'], bio: 'Passionate full-stack developer with a love for clean code.', location: 'Mumbai', languages: ['English', 'Hindi'], role: 'student', email: 'aarav@example.com' },
-  { uid: 'demo2', displayName: 'Ishani Gupta', college: 'BITS Pilani', badges: ['Python', 'Machine Learning'], bio: 'Data science enthusiast focusing on NLP and computer vision.', location: 'Bangalore', languages: ['English', 'Bengali'], role: 'student', email: 'ishani@example.com' },
-  { uid: 'demo3', displayName: 'Rohan Verma', college: 'Delhi Technological University', badges: ['Java', 'Android'], bio: 'Mobile app developer with 3 published apps on Play Store.', location: 'Delhi', languages: ['English', 'Punjabi'], role: 'student', email: 'rohan@example.com' },
-  { uid: 'demo4', displayName: 'Ananya Iyer', college: 'NIT Trichy', badges: ['Figma', 'UI Design', 'UX Research'], bio: 'Product designer obsessed with user-centric experiences.', location: 'Chennai', languages: ['English', 'Tamil'], role: 'student', email: 'ananya@example.com' },
-  { uid: 'demo5', displayName: 'Kabir Singh', college: 'SRM University', badges: ['C++', 'Algorithms'], bio: 'Competitive programmer and problem solver.', location: 'Hyderabad', languages: ['English', 'Telugu'], role: 'student', email: 'kabir@example.com' },
-  { uid: 'demo6', displayName: 'Sanya Malhotra', college: 'Manipal Institute', badges: ['Marketing', 'SEO'], bio: 'Digital marketing specialist with a focus on growth hacking.', location: 'Pune', languages: ['English', 'Marathi'], role: 'student', email: 'sanya@example.com' },
-  { uid: 'demo7', displayName: 'Vihaan Reddy', college: 'VIT Vellore', badges: ['Blockchain', 'Solidity'], bio: 'Web3 developer building the future of decentralized finance.', location: 'Bangalore', languages: ['English', 'Kannada'], role: 'student', email: 'vihaan@example.com' },
-  { uid: 'demo8', displayName: 'Meera Kapoor', college: 'LSR Delhi', badges: ['Content Writing', 'Copywriting'], bio: 'Creative writer and storyteller for tech brands.', location: 'Gurgaon', languages: ['English', 'Hindi'], role: 'student', email: 'meera@example.com' },
-];
-
-function RecruiterDashboard({ profile }: { profile: UserProfile }) {
-  const [students, setStudents] = useState<UserProfile[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+function Leaderboard() {
+  const [topUsers, setTopUsers] = useState<UserProfile[]>([]);
 
   useEffect(() => {
     const q = query(
       collection(db, 'users'),
-      where('role', '==', 'student'),
-      limit(20)
+      orderBy('totalScore', 'desc'),
+      limit(5)
     );
-
-    return onSnapshot(q, (snapshot) => {
-      const s = snapshot.docs.map(doc => ({
-        uid: doc.id,
-        ...doc.data()
-      })) as UserProfile[];
-      setStudents(s);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users');
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setTopUsers(snap.docs.map(d => d.data() as UserProfile));
     });
+    return unsubscribe;
   }, []);
 
   return (
-    <div className="space-y-16 max-w-7xl mx-auto px-6 lg:px-10 py-16">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-10">
-        <div className="max-w-2xl">
-          <Badge color="bg-indigo-50 text-indigo-700 border-indigo-100 mb-6 px-6 py-2">Verified Talent Pool</Badge>
-          <h2 className="text-[ clamp(3rem,6vw,5rem)] font-serif italic font-black tracking-tight leading-[0.9] text-slate-900">Talent Pool</h2>
-          <p className="text-xl font-medium text-slate-500 mt-6 leading-relaxed">Discover verified experts for your team, vetted by our advanced AI analysis.</p>
-        </div>
-        <div className="flex gap-4">
-          <div className="bg-white border border-slate-100 rounded-[2rem] px-10 py-8 flex items-center gap-6 shadow-2xl shadow-slate-200/50">
-            <div className="h-14 w-14 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-100">
-              <Users className="h-7 w-7 text-white" />
+    <div className="brutal-card bg-white p-8">
+      <h3 className="font-display text-4xl mb-6 uppercase border-b-4 border-black pb-2 flex items-center gap-4">
+        <Trophy className="text-[#00FF00]" /> Hall of Chaos
+      </h3>
+      <div className="space-y-4">
+        {topUsers.map((u, i) => (
+          <div key={u.uid} className={`flex justify-between items-center p-4 border-2 border-black ${i === 0 ? 'bg-[#00FF00]/10' : ''}`}>
+            <div className="flex items-center gap-4">
+              <span className="font-display text-2xl">#{i + 1}</span>
+              <img src={u.photoURL} alt="" className="h-10 w-10 border-2 border-black" />
+              <div className="flex flex-col">
+                <span className="font-black uppercase text-sm">{u.displayName}</span>
+                <span className="text-[10px] font-bold opacity-40">LVL {u.level}</span>
+              </div>
             </div>
-            <div>
-              <span className="text-4xl font-black text-slate-900 block leading-none">{students.length}</span>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mt-2 block">Verified Talent</span>
-            </div>
+            <span className="font-display text-xl">{u.totalScore}</span>
           </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-        {students.map(student => (
-          <Card key={student.uid} className="modern-card group flex flex-col">
-            <div className="flex justify-between items-start mb-10">
-              <div className="h-20 w-20 rounded-[1.5rem] bg-slate-50 flex items-center justify-center group-hover:bg-indigo-600 transition-all duration-500 shadow-inner">
-                <User className="h-10 w-10 text-indigo-600 group-hover:text-white transition-all duration-500" />
-              </div>
-              <div className="text-right">
-                <Badge color="bg-slate-900 text-white border-slate-800">{student.badges?.length || 0} Badges</Badge>
-              </div>
-            </div>
-            
-            <h3 className="text-3xl font-serif italic font-black text-slate-900 group-hover:text-indigo-600 transition-colors mb-2">{student.displayName}</h3>
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 mb-8">{student.college || 'Independent Student'}</p>
-            
-            <div className="flex flex-wrap gap-2.5 mb-10">
-              {(student.badges || []).slice(0, 3).map(b => (
-                <Badge key={b} color="bg-indigo-50 text-indigo-700 border-indigo-100 text-[10px]">{b}</Badge>
-              ))}
-              {(student.badges || []).length > 3 && <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] self-center ml-2">+{(student.badges || []).length - 3} MORE</span>}
-            </div>
-
-            <div className="mt-auto pt-8 border-t border-slate-100 flex justify-between items-center">
-              <div className="flex items-center gap-3 text-slate-500">
-                <MapPin className="h-4 w-4" />
-                <span className="text-[11px] font-black uppercase tracking-[0.15em]">{student.location || 'Remote'}</span>
-              </div>
-              <Button variant="secondary" className="px-8 py-3 text-[11px] rounded-[1.25rem] border-slate-200 text-slate-700 hover:border-indigo-600 hover:text-indigo-600" onClick={() => setSelectedStudent(student)}>VIEW PROFILE</Button>
-            </div>
-          </Card>
         ))}
       </div>
-
-      <AnimatePresence>
-        {selectedStudent && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-slate-900/80 backdrop-blur-md">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-[2.5rem] p-12 relative shadow-2xl border-none"
-            >
-              <button 
-                onClick={() => setSelectedStudent(null)}
-                className="absolute top-8 right-8 h-12 w-12 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-rose-50 hover:text-rose-600 transition-all"
-              >
-                <Plus className="rotate-45 h-6 w-6" />
-              </button>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-16">
-                <div className="md:col-span-1 space-y-8">
-                  <div className="h-56 w-56 rounded-3xl bg-slate-50 flex items-center justify-center mx-auto shadow-inner">
-                    <User className="h-24 w-24 text-slate-300" />
-                  </div>
-                  <div className="text-center">
-                    <h3 className="text-3xl font-black uppercase tracking-tight text-slate-900">{selectedStudent.displayName}</h3>
-                    <Badge color="bg-emerald-50 text-emerald-600 mt-3 px-4 py-1.5 border border-emerald-100">Verified Talent</Badge>
-                  </div>
-                  <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-4">Verified Skills</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedStudent.badges.map(b => <Badge key={b} color="bg-white text-indigo-600 border border-indigo-100 text-[10px]">{b}</Badge>)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="md:col-span-2 space-y-10">
-                  <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">College</label>
-                      <p className="text-xl font-black uppercase text-slate-900">{selectedStudent.college || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Location</label>
-                      <p className="text-xl font-black uppercase text-slate-900">{selectedStudent.location || 'Remote'}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Professional Bio</label>
-                    <p className="text-lg font-medium text-slate-600 leading-relaxed italic">"{selectedStudent.bio || 'No bio provided.'}"</p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Languages</label>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedStudent.languages?.map(l => <Badge key={l} color="bg-slate-100 text-slate-600">{l}</Badge>)}
-                    </div>
-                  </div>
-
-                  <div className="pt-10 border-t border-slate-100">
-                    <Button className="w-full text-xl py-5 rounded-2xl shadow-xl shadow-indigo-500/20">CONTACT STUDENT</Button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
 
-function RecruiterSearch() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterSkill, setFilterSkill] = useState('');
-  const [results, setResults] = useState<UserProfile[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
-
-  const handleSearch = async () => {
-    setIsSearching(true);
-    try {
-      let q = query(
-        collection(db, 'users'),
-        where('role', '==', 'student')
-      );
-
-      const snapshot = await getDocs(q);
-      const allStudents = snapshot.docs.map(doc => ({
-        uid: doc.id,
-        ...doc.data()
-      })) as UserProfile[];
-
-      const filtered = allStudents.filter(s => {
-        const matchesSearch = s.displayName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                             (s.college && s.college.toLowerCase().includes(searchTerm.toLowerCase()));
-        const matchesSkill = filterSkill === '' || (s.badges || []).includes(filterSkill);
-        return matchesSearch && matchesSkill;
-      });
-      setResults(filtered);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'users');
-    }
-    setIsSearching(false);
-  };
-
-  return (
-    <div className="space-y-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <section className="bg-slate-900 p-12 rounded-[2.5rem] border border-slate-800 shadow-2xl shadow-indigo-900/20 relative overflow-hidden">
-        <div className="relative z-10">
-          <Badge color="bg-indigo-500/10 text-indigo-400 mb-6 px-4 py-1.5 text-xs border border-indigo-500/20">Advanced Talent Search</Badge>
-          <h2 className="text-6xl font-black uppercase tracking-tighter mb-10 text-white">Find Your Next Hire</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="md:col-span-2">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 mb-3 block">Search by Name or College</label>
-              <div className="relative group">
-                <input 
-                  type="text" 
-                  className="modern-input w-full px-6 py-5 font-bold text-xl"
-                  placeholder="Type name or college..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                />
-                <Search className="absolute right-6 top-1/2 -translate-y-1/2 h-6 w-6 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 mb-3 block">Filter by Skill</label>
-              <div className="relative">
-                <select 
-                  className="modern-input w-full px-6 py-5 font-bold text-xl appearance-none"
-                  value={filterSkill}
-                  onChange={e => setFilterSkill(e.target.value)}
-                >
-                  <option value="">All Skills</option>
-                  <option value="React">React</option>
-                  <option value="Node.js">Node.js</option>
-                  <option value="Python">Python</option>
-                  <option value="UI Design">UI Design</option>
-                  <option value="Machine Learning">Machine Learning</option>
-                  <option value="Java">Java</option>
-                  <option value="Algorithms">Algorithms</option>
-                </select>
-                <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-                  <ChevronDown className="h-6 w-6" />
-                </div>
-              </div>
-            </div>
-          </div>
-          <Button onClick={handleSearch} className="mt-10 px-12 py-5 text-xl rounded-2xl shadow-xl shadow-indigo-500/20">
-            {isSearching ? <Loader2 className="animate-spin" /> : "FIND TALENT"}
-          </Button>
-        </div>
-        <div className="absolute -right-20 -bottom-20 opacity-[0.05] rotate-12 pointer-events-none">
-          <Search className="h-96 w-96 fill-indigo-500" />
-        </div>
-      </section>
-
-      {results.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {results.map(student => (
-            <Card key={student.uid} className="group p-8 flex flex-col">
-              <div className="flex justify-between items-start mb-8">
-                <div className="h-16 w-16 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:bg-indigo-600 transition-colors duration-300">
-                  <User className="h-8 w-8 text-slate-400 group-hover:text-white transition-colors duration-300" />
-                </div>
-                <div className="text-right">
-                  <Badge color="bg-slate-100 text-slate-600">{student.badges?.length || 0} Badges</Badge>
-                </div>
-              </div>
-              
-              <h3 className="text-3xl font-black uppercase tracking-tight mb-1 text-slate-900 group-hover:text-indigo-600 transition-colors">{student.displayName}</h3>
-              <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-6">{student.college || 'Independent Student'}</p>
-              
-              <div className="flex flex-wrap gap-2 mb-8">
-                {(student.badges || []).slice(0, 3).map(b => (
-                  <Badge key={b} color="bg-indigo-50 text-indigo-600 text-[10px]">{b}</Badge>
-                ))}
-              </div>
-
-              <div className="mt-auto pt-6 border-t border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-2 text-slate-400">
-                  <MapPin className="h-3 w-3" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">{student.location || 'Remote'}</span>
-                </div>
-                <Button variant="secondary" className="px-6 py-2.5 text-xs rounded-xl border-slate-200 hover:border-indigo-200 hover:text-indigo-600" onClick={() => setSelectedStudent(student)}>VIEW PROFILE</Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="p-24 text-center rounded-[2.5rem] border-2 border-dashed border-slate-200">
-          <div className="h-20 w-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-8">
-            <Search className="h-10 w-10 text-slate-200" />
-          </div>
-          <p className="text-2xl font-black uppercase tracking-tight text-slate-300">
-            {searchTerm || filterSkill ? "No matches found" : "Search results will appear here"}
-          </p>
-        </div>
-      )}
-
-      <AnimatePresence>
-        {selectedStudent && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-slate-900/80 backdrop-blur-md">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-[2.5rem] p-12 relative shadow-2xl border-none"
-            >
-              <button 
-                onClick={() => setSelectedStudent(null)}
-                className="absolute top-8 right-8 h-12 w-12 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-rose-50 hover:text-rose-600 transition-all"
-              >
-                <Plus className="rotate-45 h-6 w-6" />
-              </button>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-16">
-                <div className="md:col-span-1 space-y-8">
-                  <div className="h-56 w-56 rounded-3xl bg-slate-50 flex items-center justify-center mx-auto shadow-inner">
-                    <User className="h-24 w-24 text-slate-300" />
-                  </div>
-                  <div className="text-center">
-                    <h3 className="text-3xl font-black uppercase tracking-tight text-slate-900">{selectedStudent.displayName}</h3>
-                    <Badge color="bg-emerald-50 text-emerald-600 mt-3 px-4 py-1.5 border border-emerald-100">Verified Talent</Badge>
-                  </div>
-                  <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-4">Verified Skills</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedStudent.badges?.map(b => <Badge key={b} color="bg-white text-indigo-600 border border-indigo-100 text-[10px]">{b}</Badge>)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="md:col-span-2 space-y-10">
-                  <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">College</label>
-                      <p className="text-xl font-black uppercase text-slate-900">{selectedStudent.college || 'N/A'}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Location</label>
-                      <p className="text-xl font-black uppercase text-slate-900">{selectedStudent.location || 'Remote'}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Professional Bio</label>
-                    <p className="text-lg font-medium text-slate-600 leading-relaxed italic">"{selectedStudent.bio || 'No bio provided.'}"</p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Languages</label>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedStudent.languages?.map(l => <Badge key={l} color="bg-slate-100 text-slate-600">{l}</Badge>)}
-                    </div>
-                  </div>
-
-                  <div className="pt-10 border-t border-slate-100">
-                    <Button className="w-full text-xl py-5 rounded-2xl shadow-xl shadow-indigo-500/20">CONTACT STUDENT</Button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-function StudentHub({ profile }: { profile: UserProfile }) {
-  const [activeTask, setActiveTask] = useState<Task | null>(null);
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState('');
-  const [submissionType, setSubmissionType] = useState<'code' | 'image' | 'video'>('code');
+function Chat({ roomId, user }: { roomId: string, user: User }) {
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const q = query(
-      collection(db, 'submissions'),
-      where('userId', '==', profile.uid),
-      orderBy('timestamp', 'desc')
+      collection(db, 'rooms', roomId, 'messages'),
+      orderBy('createdAt', 'asc'),
+      limit(50)
     );
-
-    return onSnapshot(q, (snapshot) => {
-      const subs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Submission[];
-      setSubmissions(subs);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'submissions');
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setMessages(snap.docs.map(d => d.data()));
+      setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     });
-  }, [profile.uid]);
+    return unsubscribe;
+  }, [roomId]);
 
-  const handleCustomGenerate = async () => {
-    if (!customPrompt) return;
-    setLoading(true);
-    try {
-      const taskData = await generateTask(customPrompt, 'intermediate', submissionType);
-      
-      const description = `
-### Scenario
-${taskData.scenario}
-
-### Requirements
-${taskData.requirements.map((req: string) => `- ${req}`).join('\n')}
-
-### Submission Instructions
-${taskData.submissionInstructions}
-      `;
-
-      setActiveTask({
-        ...taskData,
-        id: 'custom-' + Date.now(),
-        description,
-        difficulty: 'intermediate',
-        submissionType: submissionType,
-        type: submissionType
-      });
-    } catch (error) {
-      console.error("Error generating task:", error);
-    }
-    setLoading(false);
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+    const msg = newMessage;
+    setNewMessage('');
+    await addDoc(collection(db, 'rooms', roomId, 'messages'), {
+      uid: user.uid,
+      displayName: user.displayName,
+      text: msg,
+      createdAt: Timestamp.now()
+    });
   };
 
-  const SUGGESTED_PROMPTS = [
-    { label: "Design a Brand Identity", type: "image", prompt: "Create a minimalist brand identity for a sustainable coffee shop." },
-    { label: "Animate a Logo", type: "video", prompt: "Create a 5-second logo animation for a tech startup." },
-    { label: "React Dashboard", type: "code", prompt: "Build a responsive analytics dashboard using React and Tailwind." },
-    { label: "Character Art", type: "image", prompt: "Design a cyberpunk character with neon elements." },
-  ];
-
-  if (activeTask) {
-    return <TaskInterface task={activeTask} onCancel={() => setActiveTask(null)} profile={profile} />;
-  }
-
   return (
-    <div className="space-y-16 max-w-7xl mx-auto px-6 lg:px-10 py-16">
-      <section className="bg-slate-900 p-16 rounded-[3rem] shadow-2xl shadow-indigo-200/20 relative overflow-hidden">
-        <div className="relative z-10">
-          <Badge color="bg-indigo-500 text-white border-indigo-400 mb-8 px-6 py-2">AI-Powered Verification</Badge>
-          <h2 className="text-[clamp(3rem,6vw,5rem)] font-serif italic font-black tracking-tight leading-[0.9] text-white mb-6">Get Verified</h2>
-          <p className="text-xl font-medium text-slate-400 mb-12 max-w-2xl leading-relaxed">
-            Enter a skill or project idea. Our AI will generate a unique challenge to prove your expertise in real-time.
-          </p>
-          
-          <div className="flex flex-col gap-10">
-            <div className="flex flex-wrap gap-4">
-              {(['code', 'image', 'video'] as const).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setSubmissionType(type)}
-                  className={cn(
-                    "px-10 py-4 rounded-2xl font-black uppercase text-xs tracking-[0.2em] transition-all border-2",
-                    submissionType === type 
-                      ? "bg-indigo-600 text-white border-indigo-600 shadow-2xl shadow-indigo-500/30 -translate-y-1" 
-                      : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20 hover:text-white"
-                  )}
-                >
-                  {type === 'code' && <Code className="inline-block mr-3 h-5 w-5" />}
-                  {type === 'image' && <ImageIcon className="inline-block mr-3 h-5 w-5" />}
-                  {type === 'video' && <Video className="inline-block mr-3 h-5 w-5" />}
-                  {type}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-col md:flex-row gap-6">
-              <input 
-                type="text" 
-                placeholder={submissionType === 'code' ? "e.g. React Dashboard with Tailwind" : "e.g. Minimalist Logo Design"}
-                className="flex-1 px-8 py-5 bg-white/5 border border-white/10 rounded-[1.5rem] focus:bg-white/10 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none font-black text-2xl text-white placeholder:text-slate-600 transition-all"
-                value={customPrompt}
-                onChange={(e) => setCustomPrompt(e.target.value)}
-              />
-              <Button onClick={handleCustomGenerate} disabled={loading} className="px-16 py-5 text-xl rounded-[1.5rem] shadow-2xl shadow-indigo-500/20">
-                {loading ? <Loader2 className="animate-spin" /> : "START CHALLENGE"}
-              </Button>
-            </div>
-
-            <div className="flex flex-wrap gap-4">
-              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 w-full mb-2">Suggested Challenges:</span>
-              {SUGGESTED_PROMPTS.map((suggested, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setCustomPrompt(suggested.prompt);
-                    setSubmissionType(suggested.type as any);
-                  }}
-                  className="text-[10px] font-black uppercase tracking-[0.15em] px-6 py-3 rounded-full border border-white/10 bg-white/5 text-slate-400 hover:border-indigo-500 hover:text-white hover:bg-white/10 transition-all"
-                >
-                  {suggested.label}
-                </button>
-              ))}
+    <div className="brutal-card bg-white flex flex-col h-[400px]">
+      <div className="p-4 border-b-4 border-black bg-black text-white flex items-center gap-2">
+        <MessageSquare className="h-5 w-5" />
+        <span className="font-black uppercase text-sm">Chaos Chat</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex flex-col ${m.uid === user.uid ? 'items-end' : 'items-start'}`}>
+            <span className="text-[10px] font-bold opacity-40 uppercase mb-1">{m.displayName}</span>
+            <div className={`p-3 border-2 border-black font-black text-sm ${m.uid === user.uid ? 'bg-[#00FF00]/20' : 'bg-gray-100'}`}>
+              {m.text}
             </div>
           </div>
-        </div>
-        <div className="absolute -right-20 -bottom-20 opacity-10 rotate-12 pointer-events-none">
-          <Shield className="h-[30rem] w-[30rem] fill-indigo-500" />
-        </div>
-      </section>
-
-      <section>
-        <div className="flex items-end justify-between mb-12">
-          <div>
-            <h2 className="text-[clamp(2.5rem,5vw,4rem)] font-serif italic font-black tracking-tight leading-[0.9] text-slate-900">History</h2>
-            <p className="text-lg font-medium text-slate-500 mt-4 leading-relaxed">Your past verifications and performance metrics.</p>
-          </div>
-          <Badge color="bg-slate-900 text-white border-slate-800 px-6 py-2">{submissions.length} Submissions</Badge>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-          {submissions.map(sub => (
-            <Card key={sub.id} className="modern-card group">
-              <div className="flex justify-between items-start mb-8">
-                <h4 className="text-2xl font-serif italic font-black text-slate-900 group-hover:text-indigo-600 transition-colors leading-tight">{sub.taskTitle}</h4>
-                <span className="text-3xl font-black text-indigo-600">{sub.score}%</span>
-              </div>
-              <div className="flex items-center gap-4 mb-8">
-                <Badge color={sub.status === 'verified' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}>{sub.status}</Badge>
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">
-                  {sub.timestamp instanceof Date ? sub.timestamp.toLocaleDateString() : 'Recent'}
-                </span>
-              </div>
-              <p className="text-base font-medium text-slate-500 line-clamp-2 mb-10 leading-relaxed italic border-l-2 border-slate-100 pl-4">"{sub.feedback[0]}"</p>
-              <Button variant="secondary" className="w-full text-[11px] py-4 rounded-[1.25rem] border-slate-200 text-slate-700 hover:border-indigo-600 hover:text-indigo-600">VIEW DETAILS</Button>
-            </Card>
-          ))}
-          {submissions.length === 0 && (
-            <div className="col-span-3 p-20 rounded-3xl border-2 border-dashed border-slate-100 text-center">
-              <div className="h-16 w-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <Award className="h-8 w-8 text-slate-300" />
-              </div>
-              <p className="text-xl font-bold text-slate-300 uppercase tracking-tight">No history yet. Complete your first challenge!</p>
-            </div>
-          )}
-        </div>
-      </section>
+        ))}
+        <div ref={scrollRef} />
+      </div>
+      <form onSubmit={sendMessage} className="p-4 border-t-4 border-black flex gap-2">
+        <input 
+          value={newMessage}
+          onChange={e => setNewMessage(e.target.value)}
+          placeholder="TYPE..."
+          className="brutal-input flex-1 py-2 text-sm"
+        />
+        <Button type="submit" className="px-4 py-2">SEND</Button>
+      </form>
     </div>
   );
 }
 
-function TaskInterface({ task, onCancel, profile }: { task: Task, onCancel: () => void, profile: UserProfile }) {
-  const [code, setCode] = useState('');
-  const [mediaData, setMediaData] = useState<{ base64: string, mimeType: string } | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAntiCheat, setShowAntiCheat] = useState(false);
-  const [antiCheatQuestion, setAntiCheatQuestion] = useState<{ question: string, options: string[], correctIndex: number } | null>(null);
-  const [antiCheatScore, setAntiCheatScore] = useState(100);
-  const [timeLeft, setTimeLeft] = useState(15);
-  const hasAskedAntiCheat = useRef(false);
-
-  const triggerAntiCheat = async () => {
-    if (hasAskedAntiCheat.current) return;
-    hasAskedAntiCheat.current = true;
-    try {
-      const question = await generateAntiCheat(task.title, code);
-      setAntiCheatQuestion(question);
-      setShowAntiCheat(true);
-      setTimeLeft(15);
-    } catch (error) {
-      console.error("Anti-cheat error:", error);
-    }
-  };
+function Dashboard({ user }: { user: User }) {
+  const navigate = useNavigate();
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
-    let timer: any;
-    if (showAntiCheat && timeLeft > 0) {
-      timer = setInterval(() => {
-        setTimeLeft(prev => prev - 1);
-      }, 1000);
-    } else if (showAntiCheat && timeLeft === 0) {
-      handleAntiCheatAnswer(-1); // Time's up
+    const q = query(
+      collection(db, 'rooms'), 
+      where('status', '==', 'waiting'), 
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setRooms(snap.docs.map(d => ({ id: d.id, ...d.data() } as Room)));
+    });
+
+    const userUnsubscribe = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      if (snap.exists()) setProfile(snap.data() as UserProfile);
+    });
+
+    return () => {
+      unsubscribe();
+      userUnsubscribe();
+    };
+  }, [user.uid]);
+
+  const handleJoinRoom = (room: Room) => {
+    if (room.hostId === user.uid) {
+      navigate(`/room/${room.id}`);
+      return;
     }
-    return () => clearInterval(timer);
-  }, [showAntiCheat, timeLeft]);
-
-  const handleAntiCheatAnswer = (index: number) => {
-    if (index !== antiCheatQuestion?.correctIndex) {
-      setAntiCheatScore(prev => Math.max(0, prev - 30));
-    }
-    setShowAntiCheat(false);
-    setAntiCheatQuestion(null);
-  };
-
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
-    try {
-      const evaluation = await evaluateSubmission(task, code || mediaData?.base64 || '', task.submissionType, mediaData?.mimeType);
-      
-      const finalScore = Math.round((evaluation.score * 0.7) + (antiCheatScore * 0.3));
-      const status = finalScore >= 70 ? 'verified' : 'failed';
-
-      // Truncate content for Firestore if it's too large (demo mode)
-      let storedContent = code || mediaData?.base64 || '';
-      if (storedContent.length > 500000) { // Approx 500KB limit for demo
-        storedContent = "[Media Content Truncated for Demo - Original evaluated by AI]";
+    
+    if (room.password) {
+      const pass = prompt("ENTER ROOM PASSWORD:");
+      if (pass !== room.password) {
+        alert("WRONG PASSWORD! NO CHAOS FOR YOU.");
+        return;
       }
-
-      const submissionData: Submission = {
-        userId: profile.uid,
-        taskId: task.id || 'custom',
-        taskTitle: task.title,
-        type: task.submissionType,
-        content: storedContent,
-        status: status as any,
-        score: finalScore,
-        feedback: evaluation.feedback,
-        reasoning: evaluation.reasoning,
-        timestamp: Timestamp.now()
-      };
-
-      await addDoc(collection(db, 'submissions'), submissionData);
-      
-      if (status === 'verified') {
-        // Update user badges if not already present
-        if (!profile.badges.includes(task.title)) {
-          const userRef = doc(db, 'users', profile.uid);
-          await updateDoc(userRef, {
-            badges: [...profile.badges, task.title]
-          });
-        }
-      }
-
-      onCancel();
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'submissions');
     }
-    setIsSubmitting(false);
+    navigate(`/room/${room.id}`);
   };
-
-  useEffect(() => {
-    if (task.submissionType === 'code' && code.length > 200 && Math.random() > 0.8) {
-      triggerAntiCheat();
-    }
-  }, [code]);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-white flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-6">
-          <button onClick={onCancel} className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-400 hover:text-indigo-600">
-            <Plus className="rotate-45 h-6 w-6" />
-          </button>
-          <div>
-            <h3 className="text-2xl font-black uppercase tracking-tighter leading-none text-slate-900">{task.title}</h3>
-            <div className="flex items-center gap-3 mt-1">
-              <Badge color="bg-indigo-50 text-indigo-600">{task.difficulty}</Badge>
-              <Badge color="bg-slate-50 text-slate-500 border border-slate-100">
-                {task.submissionType === 'code' && <Code className="h-3 w-3 mr-1 inline" />}
-                {task.submissionType === 'image' && <ImageIcon className="h-3 w-3 mr-1 inline" />}
-                {task.submissionType === 'video' && <Video className="h-3 w-3 mr-1 inline" />}
-                {task.submissionType}
-              </Badge>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Time Limit: 45:00</span>
-            </div>
-          </div>
+    <div className="flex-1 bg-white p-8 lg:p-16">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-16 gap-8 border-b-8 border-black pb-12">
+        <div>
+          <h2 className="font-display text-8xl uppercase leading-none mb-2">Lobby</h2>
+          <p className="font-black uppercase tracking-widest text-[#B19CD9] bg-black px-4 py-1 inline-block">
+            {rooms.length} Games Active
+          </p>
         </div>
-        <div className="flex items-center gap-4">
-          <Button variant="secondary" onClick={onCancel} className="px-6 rounded-xl border-slate-200">CANCEL</Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting} className="px-8 rounded-xl shadow-lg shadow-indigo-500/20">
-            {isSubmitting ? <Loader2 className="animate-spin" /> : "SUBMIT VERIFICATION"}
+        <div className="flex gap-4 w-full md:w-auto">
+          <Button onClick={() => navigate('/create')} variant="primary" className="flex-1 md:flex-none text-xl bg-[#FFB7C5]">
+            <Plus className="inline mr-2" /> CREATE ROOM
+          </Button>
+          <Button onClick={() => signOut(auth)} className="flex-1 md:flex-none">
+            <LogOut className="inline mr-2" /> EXIT
           </Button>
         </div>
-      </div>
+      </header>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: Instructions */}
-        <div className="w-1/3 border-r border-slate-100 p-12 overflow-y-auto bg-slate-50/50">
-          <div className="mb-8">
-            <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-600 mb-2">Challenge Details</h4>
-            <h2 className="text-3xl font-black uppercase tracking-tighter text-slate-900 flex items-center gap-3">
-              <FileText className="h-8 w-8 text-indigo-600" />
-              Mission Brief
-            </h2>
-          </div>
-          
-          <div className="prose prose-indigo max-w-none font-medium text-slate-600 leading-relaxed">
-            <Markdown>{task.description}</Markdown>
-          </div>
-          
-          <div className="mt-12 p-8 rounded-3xl bg-amber-50 border border-amber-100 relative overflow-hidden group">
-            <div className="relative z-10">
-              <h5 className="text-xs font-bold uppercase tracking-widest text-amber-700 mb-3 flex items-center gap-2">
-                <Shield className="h-4 w-4" />
-                Pro Tip
-              </h5>
-              <p className="text-sm font-medium text-amber-900/70 leading-relaxed">
-                {task.submissionType === 'code' 
-                  ? "Our AI checks for code quality, accessibility, and security. Don't just make it work, make it great."
-                  : task.submissionType === 'image'
-                  ? "Our AI evaluates composition, color theory, and adherence to the brief. High resolution matters."
-                  : "Our AI analyzes pacing, clarity, and technical execution. Ensure good lighting and clear audio."}
-              </p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+        <div className="lg:col-span-2 space-y-12">
+          {/* User Stats */}
+          {profile && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="brutal-card bg-[#FFB7C5]/20 p-6">
+                <p className="text-xs font-black uppercase opacity-40 mb-2">Total Score</p>
+                <p className="font-display text-4xl">{profile.totalScore}</p>
+              </div>
+              <div className="brutal-card bg-[#B19CD9]/20 p-6">
+                <p className="text-xs font-black uppercase opacity-40 mb-2">Games Played</p>
+                <p className="font-display text-4xl">{profile.gamesPlayed}</p>
+              </div>
+              <div className="brutal-card bg-[#00FF00]/10 p-6">
+                <p className="text-xs font-black uppercase opacity-40 mb-2">Wins</p>
+                <p className="font-display text-4xl">{profile.wins}</p>
+              </div>
+              <div className="brutal-card bg-black text-white p-6">
+                <p className="text-xs font-black uppercase opacity-40 mb-2">Level</p>
+                <p className="font-display text-4xl">{profile.level}</p>
+              </div>
             </div>
-            <div className="absolute -right-4 -bottom-4 opacity-10 rotate-12 group-hover:rotate-0 transition-transform duration-500">
-              <Award className="h-24 w-24 text-amber-600" />
-            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+            {rooms.map(room => (
+              <motion.div 
+                key={room.id} 
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`brutal-card group relative overflow-hidden ${room.isKidFriendly ? 'border-[#FFB7C5]' : ''}`}
+              >
+                <div className={`absolute top-0 right-0 px-4 py-2 font-display text-xl -rotate-2 translate-x-2 -translate-y-2 ${room.isKidFriendly ? 'bg-[#FFB7C5] text-black' : 'bg-black text-[#00FF00]'}`}>
+                  {room.gameType}
+                </div>
+                <div className="flex justify-between items-start mb-8">
+                  <div className={`flex items-center gap-2 font-black px-3 py-1 border-2 border-black ${room.isKidFriendly ? 'bg-[#FFB7C5]' : 'bg-[#00FF00]'}`}>
+                    <Users className="h-5 w-5" /> {room.players.length} PLAYERS
+                  </div>
+                  <div className="flex gap-2">
+                    {room.password && (
+                      <div className="bg-black text-white p-1 border-2 border-black">
+                        <Lock className="h-4 w-4" />
+                      </div>
+                    )}
+                    {room.isKidFriendly && (
+                      <div className="flex items-center gap-1 font-black bg-[#B19CD9] px-3 py-1 border-2 border-black text-xs">
+                        <Star className="h-3 w-3 fill-black" /> KIDS
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <h3 className={`text-4xl font-display mb-4 uppercase leading-none transition-colors ${room.isKidFriendly ? 'group-hover:text-[#FFB7C5]' : 'group-hover:text-[#00FF00]'}`}>
+                  {room.theme}
+                </h3>
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="h-10 w-10 bg-black flex items-center justify-center">
+                    <UserIcon className="text-white h-6 w-6" />
+                  </div>
+                  <p className="font-black uppercase text-xs tracking-tighter">Hosted by {room.hostName}</p>
+                </div>
+                <Button 
+                  onClick={() => handleJoinRoom(room)} 
+                  variant="primary" 
+                  className={`w-full text-xl group ${room.isKidFriendly ? 'bg-[#B19CD9]' : ''}`}
+                >
+                  {room.isKidFriendly ? 'JOIN THE FUN' : 'JOIN THE CHAOS'} <ArrowRight className="inline ml-2 group-hover:translate-x-2 transition-transform" />
+                </Button>
+              </motion.div>
+            ))}
+            {rooms.length === 0 && (
+              <div className="col-span-full py-32 text-center border-8 border-dashed border-black/10">
+                <Skull className="h-24 w-24 mx-auto mb-8 opacity-10" />
+                <p className="text-6xl font-display uppercase opacity-10">Ghost Town</p>
+                <p className="font-black uppercase tracking-widest mt-4 opacity-20">No active games. Be the first to start the chaos!</p>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Right: Editor/Upload */}
-        <div className="flex-1 flex flex-col bg-[#0d1117]">
-          <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
-            <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-[#ff5f56]" />
-              <div className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
-              <div className="h-3 w-3 rounded-full bg-[#27c93f]" />
-              <span className="ml-4 text-[10px] font-mono text-slate-400 uppercase tracking-widest">
-                {task.submissionType === 'code' ? 'index.tsx' : 'media_upload.bin'}
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-[10px] font-mono text-emerald-500 uppercase tracking-widest animate-pulse">● Live Editor</span>
+        <div className="space-y-12">
+          <Leaderboard />
+          <div className="brutal-card bg-black text-white p-8">
+            <h3 className="font-display text-4xl mb-4 uppercase">Why QuizWhiz?</h3>
+            <p className="font-black uppercase text-sm leading-relaxed">
+              Because standard trivia is boring. We use Gemini AI to turn any topic into a high-stakes, chaotic game show. 
+              No filters. No mercy. Just pure AI-generated madness.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CreateRoom({ user }: { user: User }) {
+  const navigate = useNavigate();
+  const [theme, setTheme] = useState('');
+  const [gameType, setGameType] = useState<'quiz' | 'guessing' | 'competition'>('quiz');
+  const [isKidFriendly, setIsKidFriendly] = useState(false);
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!theme) return;
+    setLoading(true);
+
+    try {
+      const questions = await generateQuiz(theme, gameType, isKidFriendly);
+      const intro = await generateGameIntro(theme, gameType, isKidFriendly);
+      
+      const roomRef = doc(collection(db, 'rooms'));
+      const newRoom: Room = {
+        id: roomRef.id,
+        hostId: user.uid,
+        hostName: user.displayName || 'Anonymous',
+        theme,
+        gameType,
+        status: 'waiting',
+        currentQuestionIndex: 0,
+        questions,
+        players: [{
+          uid: user.uid,
+          displayName: user.displayName || 'Host',
+          score: 0,
+          lastAnswer: '',
+          isReady: true,
+          streak: 0,
+          powerups: {
+            fiftyFiftyUsed: false,
+            doublePointsUsed: false
+          }
+        }],
+        intro,
+        isKidFriendly,
+        password: password || undefined,
+        createdAt: Timestamp.now()
+      };
+
+      await setDoc(roomRef, newRoom);
+      navigate(`/room/${roomRef.id}`);
+    } catch (error) {
+      console.error("Failed to create room", error);
+      alert("AI was too busy having fun. Try again!");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 bg-[#FFB7C5] p-8 lg:p-24 flex items-center justify-center relative overflow-hidden">
+      <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+        {[...Array(10)].map((_, i) => (
+          <div key={i} className="absolute font-display text-[20rem] leading-none select-none" style={{
+            top: `${Math.random() * 100}%`,
+            left: `${Math.random() * 100}%`,
+            transform: `rotate(${Math.random() * 360}deg)`
+          }}>?</div>
+        ))}
+      </div>
+      <motion.div 
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="brutal-card bg-white max-w-3xl w-full relative z-10"
+      >
+        <h2 className="font-display text-8xl mb-12 uppercase leading-none tracking-tighter">Setup<br />Game</h2>
+        <form onSubmit={handleCreate} className="space-y-12">
+          <div className="space-y-4">
+            <label className="block font-black uppercase tracking-[0.2em] text-xl">The Theme</label>
+            <input 
+              className="brutal-input text-2xl py-6"
+              placeholder="e.g. 90s Cartoons, Space Facts, Dinosaurs..."
+              value={theme}
+              onChange={e => setTheme(e.target.value)}
+              required
+            />
+            <p className="text-xs font-bold uppercase opacity-40 italic">Be specific. Be weird. Be unhinged.</p>
+          </div>
+          <div className="space-y-4">
+            <label className="block font-black uppercase tracking-[0.2em] text-xl">Game Type</label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {(['quiz', 'guessing', 'competition'] as const).map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setGameType(type)}
+                  className={`brutal-btn text-xl group relative overflow-hidden ${gameType === type ? 'bg-[#B19CD9]' : ''}`}
+                >
+                  <span className="relative z-10">{type}</span>
+                  {gameType === type && <motion.div layoutId="activeType" className="absolute inset-0 bg-[#B19CD9]" />}
+                </button>
+              ))}
             </div>
           </div>
-          
-          <div className="flex-1 relative overflow-hidden">
-            {task.submissionType === 'code' ? (
-              <textarea
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="w-full h-full bg-transparent text-indigo-300 font-mono p-12 resize-none outline-none text-lg leading-relaxed selection:bg-indigo-500/30"
-                placeholder="// START CODING HERE..."
-                spellCheck={false}
-              />
-            ) : (
-              <div className="h-full bg-white p-1">
-                <MediaUpload 
-                  type={task.submissionType as 'image' | 'video'} 
-                  onUpload={(base64, mimeType) => setMediaData({ base64, mimeType })} 
+          <div className="space-y-4">
+            <label className="flex items-center gap-4 cursor-pointer group">
+              <div 
+                onClick={() => setIsKidFriendly(!isKidFriendly)}
+                className={`h-10 w-20 border-[6px] border-black rounded-full relative transition-colors ${isKidFriendly ? 'bg-[#00FF00]' : 'bg-white'}`}
+              >
+                <motion.div 
+                  animate={{ x: isKidFriendly ? 40 : 0 }}
+                  className="h-6 w-6 bg-black rounded-full absolute top-1 left-1"
                 />
               </div>
-            )}
-            
-            <AnimatePresence>
-              {showAntiCheat && antiCheatQuestion && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-50 flex items-center justify-center p-12 bg-slate-900/80 backdrop-blur-md"
-                >
-                  <Card className="max-w-xl w-full bg-white p-12 rounded-[2rem] shadow-2xl border-none">
-                    <div className="flex items-center justify-between mb-8">
-                      <div className="flex items-center gap-4 text-rose-600">
-                        <div className="h-16 w-16 bg-rose-50 rounded-2xl flex items-center justify-center">
-                          <AlertCircle className="h-10 w-10" />
-                        </div>
-                        <div>
-                          <h4 className="text-3xl font-black uppercase tracking-tighter leading-none">Integrity Check</h4>
-                          <p className="text-sm font-medium text-slate-400 mt-1 uppercase tracking-wide">Prove your expertise</p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Time Remaining</span>
-                        <span className={cn("text-3xl font-black font-mono", timeLeft < 5 ? "text-rose-600 animate-pulse" : "text-slate-900")}>
-                          {timeLeft}s
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-2xl font-black uppercase mb-10 leading-tight text-slate-900">{antiCheatQuestion.question}</p>
-                    <div className="grid grid-cols-1 gap-4">
-                      {antiCheatQuestion.options?.map((opt, i) => (
-                        <button
-                          key={i}
-                          onClick={() => handleAntiCheatAnswer(i)}
-                          className="w-full text-left p-6 rounded-2xl border border-slate-100 hover:border-indigo-600 hover:bg-indigo-50 font-bold uppercase transition-all group"
-                        >
-                          <div className="flex items-center gap-4">
-                            <span className="h-8 w-8 rounded-lg bg-slate-50 flex items-center justify-center text-xs font-black group-hover:bg-indigo-600 group-hover:text-white transition-colors">{String.fromCharCode(65 + i)}</span>
-                            <span className="text-slate-600 group-hover:text-indigo-900">{opt}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </Card>
-                </motion.div>
-              )}
-            </AnimatePresence>
+              <span className="font-black uppercase tracking-[0.2em] text-xl">Kid Friendly Mode</span>
+            </label>
+            <p className="text-xs font-bold uppercase opacity-40 italic">Enables magical, friendly AI host and safe content.</p>
           </div>
+          <div className="space-y-4">
+            <label className="block font-black uppercase tracking-[0.2em] text-xl">Room Password (Optional)</label>
+            <input 
+              type="password"
+              className="brutal-input text-2xl py-6"
+              placeholder="Leave blank for public room..."
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+            />
+            <p className="text-xs font-bold uppercase opacity-40 italic">Keep the chaos exclusive.</p>
+          </div>
+          <div className="flex flex-col md:flex-row gap-6 pt-8">
+            <Button type="submit" variant="primary" className="flex-[2] text-3xl py-8" disabled={loading}>
+              {loading ? (
+                <span className="flex items-center justify-center gap-4">
+                  <Sparkles className="animate-spin" /> GENERATING...
+                </span>
+              ) : "GENERATE CHAOS"}
+            </Button>
+            <Button onClick={() => navigate('/dashboard')} className="flex-1 text-xl">CANCEL</Button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+function GameRoom({ user }: { user: User }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [room, setRoom] = useState<Room | null>(null);
+  const [answer, setAnswer] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [activePowerups, setActivePowerups] = useState({
+    doublePoints: false,
+    fiftyFifty: false
+  });
+
+  useEffect(() => {
+    if (!id) return;
+    const unsubscribe = onSnapshot(doc(db, 'rooms', id), (snap) => {
+      if (!snap.exists()) {
+        navigate('/dashboard');
+        return;
+      }
+      const data = snap.data() as Room;
+      setRoom(data);
+
+      // Reset submission state when question changes
+      if (data.status === 'playing') {
+        const myPlayer = data.players.find(p => p.uid === user.uid);
+        if (!myPlayer?.lastAnswer) {
+          setSubmitted(false);
+          setAnswer('');
+          setShowExplanation(false);
+          setActivePowerups({ doublePoints: false, fiftyFifty: false });
+        } else {
+          setSubmitted(true);
+          setAnswer(myPlayer.lastAnswer);
+          setShowExplanation(true);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [id, user.uid]);
+
+  useEffect(() => {
+    if (!room || room.status !== 'finished') return;
+    
+    const updateStats = async () => {
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) return;
+
+      const userData = userSnap.data() as UserProfile;
+      const myPlayer = room.players.find(p => p.uid === user.uid);
+      if (!myPlayer) return;
+
+      // Check if we already updated for this room (simple local storage check or similar could work, 
+      // but for now we'll just do it. In production, we'd use a more robust way to prevent double counting)
+      const isWinner = room.players.sort((a, b) => b.score - a.score)[0]?.uid === user.uid;
+      
+      const newAchievements = [...(userData.achievements || [])];
+      if (isWinner && !newAchievements.includes('First Win')) newAchievements.push('First Win');
+      if (myPlayer.streak >= 5 && !newAchievements.includes('Streak Master')) newAchievements.push('Streak Master');
+      if (userData.gamesPlayed + 1 >= 10 && !newAchievements.includes('Chaos Veteran')) newAchievements.push('Chaos Veteran');
+
+      await updateDoc(userRef, {
+        totalScore: userData.totalScore + myPlayer.score,
+        gamesPlayed: userData.gamesPlayed + 1,
+        wins: isWinner ? userData.wins + 1 : userData.wins,
+        xp: userData.xp + (myPlayer.score * 10),
+        level: Math.floor((userData.xp + (myPlayer.score * 10)) / 1000) + 1,
+        achievements: newAchievements
+      });
+    };
+
+    updateStats();
+  }, [room?.status, user.uid]);
+
+  const handleJoin = async () => {
+    if (!room || room.players.find(p => p.uid === user.uid)) return;
+    const newPlayer: Player = {
+      uid: user.uid,
+      displayName: user.displayName || 'Player',
+      score: 0,
+      lastAnswer: '',
+      isReady: false,
+      streak: 0,
+      powerups: {
+        fiftyFiftyUsed: false,
+        doublePointsUsed: false
+      }
+    };
+    await updateDoc(doc(db, 'rooms', room.id), {
+      players: arrayUnion(newPlayer)
+    });
+  };
+
+  const handleReady = async () => {
+    if (!room) return;
+    const updatedPlayers = room.players.map(p => 
+      p.uid === user.uid ? { ...p, isReady: !p.isReady } : p
+    );
+    await updateDoc(doc(db, 'rooms', room.id), { players: updatedPlayers });
+  };
+
+  const handleStart = async () => {
+    if (!room) return;
+    await updateDoc(doc(db, 'rooms', room.id), { status: 'playing' });
+  };
+
+  const handleSubmitAnswer = async (selectedAnswer: string) => {
+    if (!room || submitted) return;
+    setSubmitted(true);
+    setAnswer(selectedAnswer);
+
+    const currentQuestion = room.questions[room.currentQuestionIndex];
+    let isCorrect = false;
+
+    if (room.gameType === 'quiz') {
+      isCorrect = selectedAnswer === currentQuestion.answer;
+    } else {
+      // For guessing/competition, we do a simple fuzzy match or host can decide (simplified here)
+      isCorrect = selectedAnswer.toLowerCase().trim() === currentQuestion.answer.toLowerCase().trim();
+    }
+    
+    const updatedPlayers = room.players.map(p => {
+      if (p.uid === user.uid) {
+        const newStreak = isCorrect ? p.streak + 1 : 0;
+        const streakBonus = newStreak >= 3 ? 5 : 0;
+        const basePoints = isCorrect ? 10 : 0;
+        const multiplier = activePowerups.doublePoints ? 2 : 1;
+        
+        return { 
+          ...p, 
+          score: p.score + ((basePoints + streakBonus) * multiplier),
+          lastAnswer: selectedAnswer,
+          streak: newStreak,
+          powerups: {
+            fiftyFiftyUsed: p.powerups.fiftyFiftyUsed || activePowerups.fiftyFifty,
+            doublePointsUsed: p.powerups.doublePointsUsed || activePowerups.doublePoints
+          }
+        };
+      }
+      return p;
+    });
+
+    await updateDoc(doc(db, 'rooms', room.id), { players: updatedPlayers });
+
+    // Check if everyone has answered
+    const allAnswered = updatedPlayers.every(p => p.lastAnswer !== '');
+    if (allAnswered) {
+      setShowExplanation(true);
+      setTimeout(async () => {
+        if (room.currentQuestionIndex < room.questions.length - 1) {
+          await updateDoc(doc(db, 'rooms', room.id), {
+            currentQuestionIndex: room.currentQuestionIndex + 1,
+            players: updatedPlayers.map(p => ({ ...p, lastAnswer: '' }))
+          });
+        } else {
+          await updateDoc(doc(db, 'rooms', room.id), { status: 'finished' });
+          confetti({
+            particleCount: 200,
+            spread: 100,
+            origin: { y: 0.6 },
+            colors: ['#00FF00', '#000000', '#FFFFFF']
+          });
+        }
+      }, 5000);
+    }
+  };
+
+  if (!room) return null;
+
+  const isHost = room.hostId === user.uid;
+  const myPlayer = room.players.find(p => p.uid === user.uid);
+
+  const optionsToDisplay = useMemo(() => {
+    if (!room || room.status !== 'playing') return [];
+    const currentQuestion = room.questions[room.currentQuestionIndex];
+    const options = currentQuestion.options || [];
+    
+    if (activePowerups.fiftyFifty && room.gameType === 'quiz') {
+      const correctAnswer = currentQuestion.answer;
+      const incorrectOptions = options.filter(o => o !== correctAnswer);
+      const randomIncorrect = incorrectOptions[Math.floor(Math.random() * incorrectOptions.length)];
+      return [correctAnswer, randomIncorrect].sort();
+    }
+    return options;
+  }, [room?.currentQuestionIndex, activePowerups.fiftyFifty, room?.status]);
+
+  return (
+    <div className="flex-1 bg-white p-4 lg:p-12 flex flex-col overflow-hidden">
+      <header className="flex justify-between items-center mb-12 border-b-8 border-black pb-8">
+        <div className="flex items-center gap-6">
+          <div className={`p-4 hidden md:block ${room.isKidFriendly ? 'bg-[#B19CD9] text-white' : 'bg-black text-[#00FF00]'}`}>
+            <Gamepad2 className="h-10 w-10" />
+          </div>
+          <div>
+            <h2 className="font-display text-5xl uppercase leading-none">{room.theme}</h2>
+            <p className="font-black uppercase text-xs tracking-widest mt-2">
+              <span className={`px-2 py-0.5 border-2 border-black mr-2 ${room.isKidFriendly ? 'bg-[#FFB7C5]' : 'bg-[#00FF00]'}`}>{room.gameType}</span>
+              Hosted by {room.hostName}
+              {room.isKidFriendly && <span className="ml-2 bg-[#B19CD9] text-white px-2 py-0.5 border-2 border-black">KID FRIENDLY</span>}
+            </p>
+          </div>
+        </div>
+        <Button onClick={() => navigate('/dashboard')} variant="danger" className="text-sm px-6">LEAVE</Button>
+      </header>
+
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-12 overflow-hidden">
+        {/* Players Sidebar */}
+        <div className="lg:col-span-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+          <h3 className="font-display text-3xl uppercase border-b-4 border-black pb-2 flex items-center justify-between">
+            Players <Users className="h-6 w-6" />
+          </h3>
+          <div className="space-y-4">
+            {room.players.sort((a, b) => b.score - a.score).map((p, idx) => (
+              <motion.div 
+                key={p.uid} 
+                layout
+                className={`brutal-card p-4 flex justify-between items-center relative ${p.uid === user.uid ? (room.isKidFriendly ? 'bg-[#FFB7C5]/20' : 'bg-[#00FF00]/10') : ''}`}
+              >
+                {idx === 0 && room.status !== 'waiting' && (
+                  <div className="absolute -top-3 -left-3 rotate-[-20deg]">
+                    <Crown className="h-8 w-8 text-yellow-400 fill-yellow-400 drop-shadow-[2px_2px_0px_rgba(0,0,0,1)]" />
+                  </div>
+                )}
+                <div className="flex items-center gap-4">
+                  <div className={`h-4 w-4 rounded-full border-2 border-black ${p.isReady ? (room.isKidFriendly ? 'bg-[#B19CD9]' : 'bg-[#00FF00]') : 'bg-red-500'}`} />
+                  <div className="flex flex-col">
+                    <span className="font-black uppercase text-sm truncate max-w-[120px]">{p.displayName}</span>
+                    <div className="flex gap-2 items-center">
+                      {p.lastAnswer && <span className="text-[10px] font-bold opacity-40">ANSWERED</span>}
+                      {p.streak >= 3 && (
+                        <span className={`text-[10px] font-black px-1 border border-black ${room.isKidFriendly ? 'bg-[#FFB7C5]' : 'bg-[#00FF00]'}`}>
+                          🔥 {p.streak}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <span className="font-display text-3xl">{p.score}</span>
+              </motion.div>
+            ))}
+          </div>
+          {room.status === 'waiting' && !myPlayer && (
+            <Button onClick={handleJoin} variant="primary" className={`w-full text-xl py-6 ${room.isKidFriendly ? 'bg-[#B19CD9]' : ''}`}>JOIN GAME</Button>
+          )}
+
+          {/* Chat */}
+          <div className="pt-6">
+            <Chat roomId={room.id} user={user} />
+          </div>
+        </div>
+
+        {/* Main Game Area */}
+        <div className="lg:col-span-3 flex flex-col">
+          <AnimatePresence mode="wait">
+            {room.status === 'waiting' && (
+              <motion.div 
+                key="waiting"
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                className={`brutal-card flex-1 flex flex-col items-center justify-center text-center p-12 ${room.isKidFriendly ? 'bg-[#FFB7C5]/5' : 'bg-[#00FF00]/5'}`}
+              >
+                <div className={`big-number mb-8 animate-bounce ${room.isKidFriendly ? 'text-[#B19CD9]' : 'text-[#00FF00]'}`}>?</div>
+                <h3 className="text-7xl font-display mb-8 uppercase leading-none tracking-tighter">{room.isKidFriendly ? 'Magical' : 'Lobby'}<br />{room.isKidFriendly ? 'Waiting' : 'Chaos'}</h3>
+                <div className={`brutal-card p-8 mb-12 max-w-2xl relative ${room.isKidFriendly ? 'bg-[#B19CD9] text-white' : 'bg-black text-white'}`}>
+                  <Volume2 className={`absolute -top-6 -left-6 h-12 w-12 p-2 border-4 ${room.isKidFriendly ? 'text-white bg-[#FFB7C5] border-white' : 'text-[#00FF00] bg-black border-[#00FF00]'}`} />
+                  <p className="text-2xl font-black italic">"{room.intro}"</p>
+                </div>
+                
+                {isHost ? (
+                  <div className="space-y-6">
+                    <p className={`font-black uppercase tracking-[0.3em] text-sm px-6 py-2 ${room.isKidFriendly ? 'bg-[#FFB7C5] text-black' : 'bg-black text-white'}`}>YOU ARE THE HOST</p>
+                    <Button 
+                      onClick={handleStart} 
+                      variant="primary" 
+                      className={`text-4xl py-8 px-16 group ${room.isKidFriendly ? 'bg-[#B19CD9]' : ''}`}
+                      disabled={room.players.length < 1}
+                    >
+                      {room.isKidFriendly ? 'START THE FUN' : 'UNLEASH CHAOS'} <Play className="inline ml-4 group-hover:scale-125 transition-transform" />
+                    </Button>
+                    <p className="text-xs font-bold opacity-40 uppercase">Wait for everyone to be ready!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <Button 
+                      onClick={handleReady} 
+                      variant={myPlayer?.isReady ? 'secondary' : 'primary'}
+                      className={`text-3xl py-8 px-16 ${myPlayer?.isReady ? '' : (room.isKidFriendly ? 'bg-[#B19CD9]' : '')}`}
+                    >
+                      {myPlayer?.isReady ? (room.isKidFriendly ? 'READY TO PLAY!' : 'READY AS HELL!') : 'I AM READY'}
+                    </Button>
+                    <p className="text-xs font-bold opacity-40 uppercase">Waiting for host to start...</p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {room.status === 'playing' && (
+              <motion.div 
+                key="playing"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex-1 flex flex-col space-y-8"
+              >
+                <div className={`brutal-card relative overflow-hidden ${room.isKidFriendly ? 'bg-[#B19CD9] text-white' : 'bg-black text-white'}`}>
+                  <div className="absolute top-0 right-0 p-4 opacity-20">
+                    {room.isKidFriendly ? <Sparkles className="h-24 w-24" /> : <Zap className="h-24 w-24" />}
+                  </div>
+                  <div className="flex justify-between items-center mb-12 relative z-10">
+                    <span className={`font-display text-4xl uppercase ${room.isKidFriendly ? 'text-white' : 'text-[#00FF00]'}`}>
+                      Round {room.currentQuestionIndex + 1} / {room.questions.length}
+                    </span>
+                    <div className={`flex items-center gap-4 font-black px-4 py-2 border-4 border-white ${room.isKidFriendly ? 'bg-[#FFB7C5] text-black' : 'bg-[#00FF00] text-black'}`}>
+                      <Timer className="h-6 w-6 animate-spin-slow" /> 
+                      {room.players.filter(p => p.lastAnswer).length} / {room.players.length} ANSWERED
+                    </div>
+                  </div>
+                  <h3 className="text-5xl font-display mb-8 uppercase leading-[0.9] tracking-tighter relative z-10">
+                    {room.questions[room.currentQuestionIndex].text}
+                  </h3>
+                </div>
+
+                <div className="flex-1">
+                  {room.gameType === 'quiz' ? (
+                    <div className="flex flex-col gap-8">
+                      {!submitted && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <Button 
+                            disabled={myPlayer?.powerups.fiftyFiftyUsed || activePowerups.fiftyFifty}
+                            onClick={() => setActivePowerups(prev => ({ ...prev, fiftyFifty: true }))}
+                            className={`py-4 text-xs font-black uppercase ${activePowerups.fiftyFifty ? (room.isKidFriendly ? 'bg-[#FFB7C5]' : 'bg-[#00FF00]') : 'bg-gray-100'}`}
+                          >
+                            50/50 {myPlayer?.powerups.fiftyFiftyUsed && '✅'}
+                          </Button>
+                          <Button 
+                            disabled={myPlayer?.powerups.doublePointsUsed || activePowerups.doublePoints}
+                            onClick={() => setActivePowerups(prev => ({ ...prev, doublePoints: true }))}
+                            className={`py-4 text-xs font-black uppercase ${activePowerups.doublePoints ? (room.isKidFriendly ? 'bg-[#FFB7C5]' : 'bg-[#00FF00]') : 'bg-gray-100'}`}
+                          >
+                            2X POINTS {myPlayer?.powerups.doublePointsUsed && '✅'}
+                          </Button>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {optionsToDisplay.map((opt, idx) => (
+                          <motion.button
+                            key={idx}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => handleSubmitAnswer(opt)}
+                            disabled={submitted}
+                            className={`brutal-btn text-left text-2xl normal-case h-auto py-8 px-10 flex items-start gap-6 group ${
+                              submitted && opt === room.questions[room.currentQuestionIndex].answer ? (room.isKidFriendly ? 'bg-[#FFB7C5]' : 'bg-[#00FF00]') : 
+                              submitted && opt === answer ? 'bg-red-500' : 'bg-white'
+                            }`}
+                          >
+                            <span className="font-display text-4xl opacity-20 group-hover:opacity-100 transition-opacity">
+                              {String.fromCharCode(65 + idx)}
+                            </span>
+                            <span className="font-black uppercase">{opt}</span>
+                          </motion.button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="brutal-card p-12 flex flex-col items-center gap-8">
+                      <input 
+                        className={`brutal-input text-4xl py-10 text-center uppercase ${room.isKidFriendly ? 'border-[#B19CD9] focus:ring-[#FFB7C5]' : ''}`}
+                        placeholder={room.isKidFriendly ? "GUESS THE MAGIC WORD..." : "TYPE YOUR ANSWER..."}
+                        value={answer}
+                        onChange={e => setAnswer(e.target.value)}
+                        disabled={submitted}
+                        onKeyDown={e => e.key === 'Enter' && handleSubmitAnswer(answer)}
+                      />
+                      {!submitted && (
+                        <Button onClick={() => handleSubmitAnswer(answer)} variant="primary" className={`text-3xl px-16 py-6 ${room.isKidFriendly ? 'bg-[#B19CD9]' : ''}`}>
+                          SUBMIT ANSWER
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <AnimatePresence>
+                  {showExplanation && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 50 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 50 }}
+                      className={`brutal-card border-black p-8 relative overflow-hidden ${room.isKidFriendly ? 'bg-[#FFB7C5]' : 'bg-[#00FF00]'}`}
+                    >
+                      <div className="absolute -right-8 -bottom-8 opacity-10">
+                        <Sparkles className="h-48 w-48" />
+                      </div>
+                      <div className="flex items-center gap-6 mb-4 relative z-10">
+                        {answer.toLowerCase().trim() === room.questions[room.currentQuestionIndex].answer.toLowerCase().trim() ? 
+                          <div className="bg-black p-3 rounded-full"><CheckCircle2 className={`${room.isKidFriendly ? 'text-[#B19CD9]' : 'text-[#00FF00]'} h-8 w-8`} /></div> : 
+                          <div className="bg-black p-3 rounded-full"><XCircle className="text-red-500 h-8 w-8" /></div>
+                        }
+                        <div>
+                          <span className="font-display text-4xl uppercase leading-none">
+                            {answer.toLowerCase().trim() === room.questions[room.currentQuestionIndex].answer.toLowerCase().trim() ? (room.isKidFriendly ? 'YAY! YOU GOT IT!' : 'BOOM! CORRECT!') : (room.isKidFriendly ? 'OH NO! TRY AGAIN!' : 'OOF! WRONG!')}
+                          </span>
+                          <p className="font-black uppercase text-sm mt-1">The answer was: {room.questions[room.currentQuestionIndex].answer}</p>
+                        </div>
+                      </div>
+                      <p className="text-xl font-black italic relative z-10 border-t-4 border-black pt-4 mt-4">
+                        "{room.questions[room.currentQuestionIndex].explanation}"
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
+
+            {room.status === 'finished' && (
+              <motion.div 
+                key="finished"
+                initial={{ opacity: 0, rotate: -5 }}
+                animate={{ opacity: 1, rotate: 0 }}
+                className={`brutal-card flex-1 flex flex-col items-center justify-center text-center p-12 bg-white relative overflow-hidden ${room.isKidFriendly ? 'border-[#B19CD9]' : ''}`}
+              >
+                <div className="absolute inset-0 opacity-5 pointer-events-none">
+                  {[...Array(20)].map((_, i) => (
+                    <Trophy key={i} className="absolute" style={{ 
+                      top: `${Math.random() * 100}%`, 
+                      left: `${Math.random() * 100}%`,
+                      transform: `rotate(${Math.random() * 360}deg)`
+                    }} />
+                  ))}
+                </div>
+                
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                >
+                  <Trophy className={`h-48 w-48 mx-auto mb-8 drop-shadow-[8px_8px_0px_rgba(0,0,0,1)] ${room.isKidFriendly ? 'text-[#B19CD9]' : 'text-[#00FF00]'}`} />
+                </motion.div>
+                
+                <h3 className="text-8xl font-display mb-12 uppercase leading-none tracking-tighter">
+                  {room.isKidFriendly ? 'Magic\nOver' : 'Chaos\nOver'}
+                </h3>
+                
+                <div className="w-full max-w-2xl mx-auto space-y-6 mb-16">
+                  {room.players.sort((a, b) => b.score - a.score).map((p, i) => (
+                    <motion.div 
+                      key={p.uid} 
+                      initial={{ x: -100, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: i * 0.1 }}
+                      className={`flex justify-between items-center p-6 border-8 border-black ${i === 0 ? (room.isKidFriendly ? 'bg-[#FFB7C5] scale-110 z-10 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]' : 'bg-[#00FF00] scale-110 z-10 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]') : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'}`}
+                    >
+                      <div className="flex items-center gap-6">
+                        <span className="font-display text-5xl">#{i + 1}</span>
+                        <div className="text-left">
+                          <span className="font-black text-2xl uppercase block leading-none">{p.displayName}</span>
+                          <span className="text-xs font-bold opacity-40 uppercase tracking-widest">{p.score} POINTS</span>
+                        </div>
+                      </div>
+                      {i === 0 && <Crown className="h-10 w-10" />}
+                    </motion.div>
+                  ))}
+                </div>
+
+                <div className="flex gap-6 w-full max-w-md">
+                  <Button onClick={() => navigate('/dashboard')} variant="primary" className={`flex-1 text-2xl py-8 ${room.isKidFriendly ? 'bg-[#B19CD9]' : ''}`}>
+                    LOBBY
+                  </Button>
+                  {isHost && (
+                    <Button onClick={() => navigate('/create')} className={`flex-1 text-2xl py-8 ${room.isKidFriendly ? 'bg-[#FFB7C5]' : ''}`}>
+                      NEW GAME
+                    </Button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>
